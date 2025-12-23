@@ -12,7 +12,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 import yt_dlp
 from openai import OpenAI
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -367,21 +369,56 @@ class YouTubeSubtitleGenerator:
 
             print("⏳ Génération des sous-titres... (cela peut prendre du temps)")
 
-            # Créer un clip de sous-titres
+            # Créer un clip de sous-titres avec PIL (pas besoin d'ImageMagick)
             def make_textclip(txt):
                 if not txt:
                     return None
-                return TextClip(
-                    txt,
-                    font='Arial-Bold',
-                    fontsize=60,
-                    color='white',
-                    stroke_color='black',
-                    stroke_width=3,
-                    method='caption',
-                    size=(video.w * 0.9, None),
-                    align='center'
-                )
+
+                # Dimensions de l'image
+                width = int(video.w * 0.9)
+                height = 200  # Hauteur suffisante pour le texte
+
+                # Créer une image transparente
+                img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(img)
+
+                # Essayer de charger une police, sinon utiliser la police par défaut
+                try:
+                    # Essayer Arial Bold
+                    font = ImageFont.truetype("arialbd.ttf", 60)
+                except:
+                    try:
+                        # Essayer Arial normale
+                        font = ImageFont.truetype("arial.ttf", 60)
+                    except:
+                        try:
+                            # Pour Linux
+                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
+                        except:
+                            # Police par défaut
+                            font = ImageFont.load_default()
+
+                # Calculer la position du texte pour le centrer
+                bbox = draw.textbbox((0, 0), txt, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                x = (width - text_width) // 2
+                y = (height - text_height) // 2
+
+                # Dessiner le contour noir (stroke)
+                stroke_width = 3
+                for offset_x in range(-stroke_width, stroke_width + 1):
+                    for offset_y in range(-stroke_width, stroke_width + 1):
+                        draw.text((x + offset_x, y + offset_y), txt, font=font, fill='black')
+
+                # Dessiner le texte blanc par-dessus
+                draw.text((x, y), txt, font=font, fill='white')
+
+                # Convertir en array numpy pour moviepy
+                img_array = np.array(img)
+
+                # Créer un ImageClip
+                return ImageClip(img_array, duration=0.1)
 
             # Créer les sous-titres pour chaque mot
             subtitle_clips = []
