@@ -42,7 +42,18 @@ class YouTubeSubtitleGenerator:
                 "Créez un fichier .env avec : OPENAI_API_KEY=votre-clé"
             )
 
-        self.client = OpenAI(api_key=self.api_key)
+        # Désactiver le proxy pour OpenAI (nécessaire sur certains environnements)
+        import httpx
+        http_client = httpx.Client(
+            proxies=None,  # Désactive tous les proxies
+            verify=False,  # Désactive la vérification SSL si nécessaire
+            timeout=60.0
+        )
+
+        self.client = OpenAI(
+            api_key=self.api_key,
+            http_client=http_client
+        )
 
         # Créer les dossiers de sortie
         self.base_dir = Path("videos_telechargees")
