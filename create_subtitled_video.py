@@ -228,6 +228,21 @@ class YouTubeSubtitleGenerator:
         print("\n" + "=" * 70)
         print("🎙️  ÉTAPE 3/5 : TRANSCRIPTION AVEC WHISPER API")
         print("=" * 70)
+
+        # Calculer la durée de l'audio pour estimer le coût
+        try:
+            from moviepy.editor import AudioFileClip
+            audio_clip = AudioFileClip(audio_path)
+            duree_secondes = audio_clip.duration
+            audio_clip.close()
+            duree_minutes = duree_secondes / 60
+
+            print(f"📊 Durée de l'audio : {duree_minutes:.2f} minutes ({duree_secondes:.0f}s)")
+            print(f"💰 Coût estimé : ${duree_minutes * 0.006:.4f} USD")
+        except Exception as e:
+            print(f"⚠️  Impossible de calculer la durée : {e}")
+            duree_minutes = 0
+
         print("⏳ Envoi à l'API OpenAI... (cela peut prendre quelques instants)")
 
         try:
@@ -246,6 +261,12 @@ class YouTubeSubtitleGenerator:
             else:
                 print("⚠️  Attention : Pas de timestamps mot par mot disponibles")
                 print("   Utilisation des segments à la place...")
+
+            # Afficher le coût réel
+            if duree_minutes > 0:
+                cout_reel = duree_minutes * 0.006
+                print(f"\n💵 COÛT DE L'APPEL API WHISPER : ${cout_reel:.4f} USD")
+                print(f"   (Tarif : $0.006/minute × {duree_minutes:.2f} minutes)")
 
             # Sauvegarder la transcription
             self.sauvegarder_transcription(transcript, video_title)
