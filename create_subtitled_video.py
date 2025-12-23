@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 import yt_dlp
 from openai import OpenAI
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
-from moviepy.video.tools.subtitles import SubtitlesClip
 
 # Charger les variables d'environnement
 load_dotenv()
