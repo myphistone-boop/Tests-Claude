@@ -128,9 +128,21 @@ Le script fait tout automatiquement :
 
 **Solution** : Vérifiez que le fichier `.env` existe et contient `OPENAI_API_KEY=sk-...`
 
-### Erreur SSL (PC d'entreprise)
+### Erreur SSL ou Connection Error (PC d'entreprise)
 
-Le script désactive automatiquement la vérification SSL pour les proxys d'entreprise.
+```
+Connection error.
+```
+
+**Le script désactive automatiquement les problèmes suivants** :
+- ✅ Vérification SSL pour les proxys d'entreprise (yt-dlp)
+- ✅ Contournement des proxies pour l'API OpenAI (httpx)
+- ✅ Désactivation de la vérification SSL pour OpenAI
+
+**Si vous avez toujours une erreur** :
+1. Vérifiez que vous êtes bien sur un réseau qui permet l'accès à `api.openai.com`
+2. Testez avec : `python test_openai_connection.py`
+3. Si le test échoue, essayez sur un autre réseau (WiFi personnel, partage de connexion)
 
 ### Erreur d'installation
 
@@ -162,6 +174,12 @@ Pour les vidéos très longues (>30 min), le traitement peut prendre du temps. S
 3. **PC d'entreprise** : Le script fonctionne avec proxys et certificats SSL custom
 
 ## 📝 Scripts disponibles
+
+### Test de connexion API (recommandé en premier)
+```bash
+python test_openai_connection.py
+```
+→ Teste la connexion à l'API OpenAI avant de lancer le pipeline complet
 
 ### Script complet (recommandé)
 ```bash
