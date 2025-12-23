@@ -25,6 +25,7 @@ def telecharger_video(url):
         'outtmpl': f'{dossier_telechargement}/%(title)s.%(ext)s',  # Nom du fichier
         'quiet': False,  # Afficher la progression
         'no_warnings': False,
+        'nocheckcertificate': True,  # Désactiver vérification SSL (nécessaire sur PC d'entreprise avec proxy)
     }
 
     try:
