@@ -15,6 +15,7 @@ from openai import OpenAI
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+from tqdm import tqdm
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -155,11 +156,15 @@ class YouTubeSubtitleGenerator:
 
         try:
             # Première passe : récupérer les infos sans télécharger
+            print("⏳ Récupération des informations de la vidéo...")
             with yt_dlp.YoutubeDL({'quiet': True, 'nocheckcertificate': True}) as ydl:
                 info = ydl.extract_info(url, download=False)
                 video_title_original = info.get('title', 'video')
                 video_title_clean = nettoyer_nom_fichier(video_title_original)
                 video_ext = info.get('ext', 'mp4')
+
+            print(f"📹 Titre : {video_title_clean}")
+            print("⏳ Téléchargement en cours...")
 
             # Télécharger avec le nom nettoyé directement
             video_path_clean = self.videos_dir / f"{video_title_clean}.{video_ext}"
@@ -200,12 +205,15 @@ class YouTubeSubtitleGenerator:
         audio_path = self.audio_dir / f"{video_title}.mp3"
 
         try:
+            print("⏳ Chargement de la vidéo...")
             video = VideoFileClip(video_path)
+
+            print(f"⏳ Extraction de l'audio ({video.duration:.1f}s)...")
             video.audio.write_audiofile(
                 str(audio_path),
                 codec='mp3',
                 verbose=False,
-                logger=None
+                logger='bar'  # Affiche une barre de progression
             )
             video.close()
 
@@ -310,30 +318,12 @@ class YouTubeSubtitleGenerator:
                 })
 
         def generer_texte(t):
-            """Retourne le texte à afficher au temps t"""
-            # Trouver les mots à afficher (fenêtre de 3 mots)
-            mots_a_afficher = []
-            mot_actuel_idx = None
-
-            for idx, mot_info in enumerate(mots_timestamps):
+            """Retourne le texte à afficher au temps t - UN SEUL MOT"""
+            # Trouver le mot actuel
+            for mot_info in mots_timestamps:
                 if mot_info['start'] <= t <= mot_info['end']:
-                    mot_actuel_idx = idx
-                    break
-
-            if mot_actuel_idx is not None:
-                # Prendre le mot précédent, actuel et suivant
-                start_idx = max(0, mot_actuel_idx - 1)
-                end_idx = min(len(mots_timestamps), mot_actuel_idx + 2)
-
-                for i in range(start_idx, end_idx):
-                    mot = mots_timestamps[i]['word'].strip()
-                    if i == mot_actuel_idx:
-                        # Mot actuel en majuscules et surligné
-                        mots_a_afficher.append(mot.upper())
-                    else:
-                        mots_a_afficher.append(mot.lower())
-
-                return ' '.join(mots_a_afficher)
+                    # Retourner uniquement le mot actuel en MAJUSCULES
+                    return mot_info['word'].strip().upper()
 
             return ""
 
@@ -423,11 +413,12 @@ class YouTubeSubtitleGenerator:
             # Créer les sous-titres pour chaque mot
             subtitle_clips = []
 
-            for mot_info in mots_timestamps:
+            print(f"📝 Génération de {len(mots_timestamps)} sous-titres...")
+            for mot_info in tqdm(mots_timestamps, desc="Sous-titres", unit="mot"):
                 start = mot_info['start']
                 end = mot_info['end']
 
-                # Créer un contexte de 3 mots
+                # Récupérer le mot actuel
                 txt = generer_texte((start + end) / 2)
 
                 if txt:
@@ -442,6 +433,9 @@ class YouTubeSubtitleGenerator:
             final_video = CompositeVideoClip([video] + subtitle_clips)
 
             # Écrire la vidéo
+            print("\n" + "=" * 70)
+            print("🎬 ÉTAPE 5/5 : COMPOSITION DE LA VIDÉO FINALE")
+            print("=" * 70)
             print("⏳ Écriture du fichier vidéo... (cela peut prendre plusieurs minutes)")
             final_video.write_videofile(
                 str(output_path),
@@ -450,7 +444,7 @@ class YouTubeSubtitleGenerator:
                 temp_audiofile='temp-audio.m4a',
                 remove_temp=True,
                 verbose=False,
-                logger=None
+                logger='bar'  # Affiche une barre de progression
             )
 
             # Libérer les ressources
