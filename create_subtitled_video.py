@@ -225,7 +225,7 @@ class YouTubeSubtitleGenerator:
                     model="whisper-1",
                     file=audio_file,
                     response_format="verbose_json",
-                    timestamp_granularity="word"
+                    timestamp_granularities=["word"]
                 )
 
             # Vérifier si on a des timestamps de mots
