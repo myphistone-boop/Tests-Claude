@@ -345,7 +345,18 @@ class YouTubeSubtitleGenerator:
         print("🎬 ÉTAPE 4/5 : GÉNÉRATION DES SOUS-TITRES STYLE TIKTOK")
         print("=" * 70)
 
-        output_path = self.output_dir / f"{video_title}_subtitled.mp4"
+        # Générer un nom de fichier unique pour éviter l'écrasement
+        output_base = self.output_dir / f"{video_title}_subtitled.mp4"
+        output_path = output_base
+
+        # Si le fichier existe déjà, ajouter un numéro
+        counter = 1
+        while output_path.exists():
+            output_path = self.output_dir / f"{video_title}_subtitled_{counter}.mp4"
+            counter += 1
+
+        if counter > 1:
+            print(f"ℹ️  Fichier existant détecté, création de : {output_path.name}")
 
         try:
             # Charger la vidéo
