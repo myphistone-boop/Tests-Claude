@@ -7,6 +7,7 @@ Pipeline complet : Téléchargement -> Extraction audio -> Transcription -> Sous
 import os
 import sys
 import re
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 import yt_dlp
@@ -49,8 +50,81 @@ class YouTubeSubtitleGenerator:
         self.audio_dir = self.base_dir / "audio_extraits"
         self.output_dir = self.base_dir / "videos_sous-titrees"
 
-        for directory in [self.videos_dir, self.audio_dir, self.output_dir]:
+        self.transcripts_dir = self.base_dir / "transcriptions"
+
+        for directory in [self.videos_dir, self.audio_dir, self.output_dir, self.transcripts_dir]:
             directory.mkdir(parents=True, exist_ok=True)
+
+    def detecter_fichiers_existants(self, url=None):
+        """Détecte les fichiers existants dans les dossiers"""
+        videos = list(self.videos_dir.glob("*.mp4")) + list(self.videos_dir.glob("*.webm"))
+        audios = list(self.audio_dir.glob("*.mp3"))
+        transcripts = list(self.transcripts_dir.glob("*.json"))
+
+        return {
+            'videos': videos,
+            'audios': audios,
+            'transcripts': transcripts
+        }
+
+    def sauvegarder_transcription(self, transcript, video_title):
+        """Sauvegarde la transcription en JSON"""
+        transcript_path = self.transcripts_dir / f"{video_title}_transcript.json"
+
+        # Convertir l'objet Whisper en dict
+        data = {
+            'text': transcript.text if hasattr(transcript, 'text') else '',
+            'words': []
+        }
+
+        if hasattr(transcript, 'words') and transcript.words:
+            data['words'] = [
+                {
+                    'word': word.word,
+                    'start': word.start,
+                    'end': word.end
+                }
+                for word in transcript.words
+            ]
+        elif hasattr(transcript, 'segments') and transcript.segments:
+            data['segments'] = [
+                {
+                    'text': seg.text,
+                    'start': seg.start,
+                    'end': seg.end
+                }
+                for seg in transcript.segments
+            ]
+
+        with open(transcript_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        print(f"💾 Transcription sauvegardée : {transcript_path.name}")
+        return str(transcript_path)
+
+    def charger_transcription(self, transcript_path):
+        """Charge une transcription depuis JSON"""
+        with open(transcript_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Créer un objet similaire à celui de Whisper
+        class TranscriptData:
+            def __init__(self, data):
+                self.text = data.get('text', '')
+                self.words = []
+                self.segments = []
+
+                if 'words' in data:
+                    for w in data['words']:
+                        word_obj = type('Word', (), w)()
+                        self.words.append(word_obj)
+
+                if 'segments' in data:
+                    for s in data['segments']:
+                        seg_obj = type('Segment', (), s)()
+                        self.segments.append(seg_obj)
+
+        return TranscriptData(data)
 
     def telecharger_video(self, url):
         """
@@ -129,12 +203,13 @@ class YouTubeSubtitleGenerator:
             print(f"❌ Erreur lors de l'extraction audio : {e}")
             sys.exit(1)
 
-    def transcrire_avec_whisper(self, audio_path):
+    def transcrire_avec_whisper(self, audio_path, video_title):
         """
         Transcrit l'audio avec l'API Whisper d'OpenAI
 
         Args:
             audio_path (str): Chemin du fichier audio
+            video_title (str): Titre de la vidéo (pour sauvegarder)
 
         Returns:
             dict: Transcription avec timestamps mot par mot
@@ -157,11 +232,14 @@ class YouTubeSubtitleGenerator:
             if hasattr(transcript, 'words') and transcript.words:
                 nb_mots = len(transcript.words)
                 print(f"✅ Transcription terminée : {nb_mots} mots détectés")
-                return transcript
             else:
                 print("⚠️  Attention : Pas de timestamps mot par mot disponibles")
                 print("   Utilisation des segments à la place...")
-                return transcript
+
+            # Sauvegarder la transcription
+            self.sauvegarder_transcription(transcript, video_title)
+
+            return transcript
 
         except Exception as e:
             print(f"❌ Erreur lors de la transcription : {e}")
@@ -319,26 +397,50 @@ class YouTubeSubtitleGenerator:
             traceback.print_exc()
             sys.exit(1)
 
-    def traiter_video(self, url):
+    def traiter_video(self, url=None, etape_depart=1, video_path=None, audio_path=None, transcript_path=None, video_title=None):
         """
-        Pipeline complet : téléchargement -> transcription -> sous-titres
+        Pipeline complet ou partiel : téléchargement -> transcription -> sous-titres
 
         Args:
-            url (str): URL YouTube
+            url (str): URL YouTube (si etape_depart=1)
+            etape_depart (int): Étape de départ (1-4)
+            video_path (str): Chemin vidéo existante (si etape_depart>=2)
+            audio_path (str): Chemin audio existant (si etape_depart>=3)
+            transcript_path (str): Chemin transcription existante (si etape_depart>=4)
+            video_title (str): Titre de la vidéo (optionnel)
         """
         print("\n" + "=" * 70)
         print("🎥 GÉNÉRATEUR DE SOUS-TITRES YOUTUBE STYLE TIKTOK 🎥")
         print("=" * 70)
-        print(f"📎 URL : {url}\n")
+
+        transcript = None
 
         # Étape 1 : Télécharger la vidéo
-        video_path, video_title = self.telecharger_video(url)
+        if etape_depart <= 1:
+            print(f"📎 URL : {url}\n")
+            video_path, video_title = self.telecharger_video(url)
 
         # Étape 2 : Extraire l'audio
-        audio_path = self.extraire_audio(video_path, video_title)
+        if etape_depart <= 2:
+            if not video_title:
+                video_title = Path(video_path).stem
+            audio_path = self.extraire_audio(video_path, video_title)
 
         # Étape 3 : Transcrire avec Whisper
-        transcript = self.transcrire_avec_whisper(audio_path)
+        if etape_depart <= 3:
+            if not video_title:
+                video_title = Path(audio_path).stem
+            transcript = self.transcrire_avec_whisper(audio_path, video_title)
+
+        # Étape 4 : Charger la transcription si on démarre ici
+        if etape_depart == 4:
+            if not video_title:
+                video_title = Path(transcript_path).stem.replace('_transcript', '')
+            print("\n" + "=" * 70)
+            print("📂 CHARGEMENT DE LA TRANSCRIPTION EXISTANTE")
+            print("=" * 70)
+            transcript = self.charger_transcription(transcript_path)
+            print(f"✅ Transcription chargée : {Path(transcript_path).name}")
 
         # Étape 4 : Créer la vidéo avec sous-titres
         output_path = self.creer_video_sous_titree(video_path, transcript, video_title)
@@ -354,22 +456,122 @@ class YouTubeSubtitleGenerator:
 
 def main():
     """Fonction principale"""
-    # Vérifier si une URL est fournie
-    if len(sys.argv) > 1:
-        url = sys.argv[1]
-    else:
+    try:
+        generator = YouTubeSubtitleGenerator()
+
         print("\n" + "=" * 70)
         print("🎥 GÉNÉRATEUR DE SOUS-TITRES YOUTUBE STYLE TIKTOK 🎥")
         print("=" * 70)
-        url = input("\n📎 Entrez l'URL de la vidéo YouTube : ").strip()
 
-    if not url:
-        print("❌ Erreur : URL vide")
-        sys.exit(1)
+        # Détecter les fichiers existants
+        fichiers = generator.detecter_fichiers_existants()
 
-    try:
-        generator = YouTubeSubtitleGenerator()
-        generator.traiter_video(url)
+        print("\n📂 DÉTECTION DES FICHIERS EXISTANTS :")
+        print(f"   Vidéos : {len(fichiers['videos'])} fichier(s)")
+        print(f"   Audios : {len(fichiers['audios'])} fichier(s)")
+        print(f"   Transcriptions : {len(fichiers['transcripts'])} fichier(s)")
+
+        print("\n🎬 CHOISISSEZ L'ÉTAPE DE DÉPART :")
+        print("   1. Télécharger une nouvelle vidéo YouTube (tout recommencer)")
+        print("   2. Utiliser une vidéo existante (extraire l'audio)")
+        print("   3. Utiliser un audio existant (transcrire)")
+        print("   4. Utiliser une transcription existante (générer sous-titres)")
+
+        choix = input("\n👉 Votre choix (1-4) : ").strip()
+
+        if choix == "1":
+            # Nouveau téléchargement
+            url = input("\n📎 Entrez l'URL de la vidéo YouTube : ").strip()
+            if not url:
+                print("❌ Erreur : URL vide")
+                sys.exit(1)
+            generator.traiter_video(url=url, etape_depart=1)
+
+        elif choix == "2":
+            # Utiliser vidéo existante
+            if not fichiers['videos']:
+                print("❌ Aucune vidéo trouvée. Lancez l'étape 1 d'abord.")
+                sys.exit(1)
+
+            print("\n📹 VIDÉOS DISPONIBLES :")
+            for i, video in enumerate(fichiers['videos'], 1):
+                print(f"   {i}. {video.name}")
+
+            idx = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
+            video_path = str(fichiers['videos'][idx])
+            generator.traiter_video(etape_depart=2, video_path=video_path)
+
+        elif choix == "3":
+            # Utiliser audio existant
+            if not fichiers['audios']:
+                print("❌ Aucun audio trouvé. Lancez l'étape 1 ou 2 d'abord.")
+                sys.exit(1)
+
+            if not fichiers['videos']:
+                print("❌ Aucune vidéo trouvée. La vidéo est nécessaire pour la génération finale.")
+                sys.exit(1)
+
+            print("\n🎵 AUDIOS DISPONIBLES :")
+            for i, audio in enumerate(fichiers['audios'], 1):
+                print(f"   {i}. {audio.name}")
+
+            idx = int(input("\n👉 Choisissez un audio : ").strip()) - 1
+            audio_path = str(fichiers['audios'][idx])
+
+            # Trouver la vidéo correspondante
+            audio_name = fichiers['audios'][idx].stem
+            video_path = None
+            for v in fichiers['videos']:
+                if v.stem == audio_name:
+                    video_path = str(v)
+                    break
+
+            if not video_path:
+                print(f"⚠️  Vidéo correspondante non trouvée. Veuillez sélectionner une vidéo :")
+                for i, video in enumerate(fichiers['videos'], 1):
+                    print(f"   {i}. {video.name}")
+                idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
+                video_path = str(fichiers['videos'][idx_v])
+
+            generator.traiter_video(etape_depart=3, video_path=video_path, audio_path=audio_path)
+
+        elif choix == "4":
+            # Utiliser transcription existante
+            if not fichiers['transcripts']:
+                print("❌ Aucune transcription trouvée. Lancez l'étape 1, 2 ou 3 d'abord.")
+                sys.exit(1)
+
+            if not fichiers['videos']:
+                print("❌ Aucune vidéo trouvée. La vidéo est nécessaire pour la génération finale.")
+                sys.exit(1)
+
+            print("\n📄 TRANSCRIPTIONS DISPONIBLES :")
+            for i, transcript in enumerate(fichiers['transcripts'], 1):
+                print(f"   {i}. {transcript.name}")
+
+            idx = int(input("\n👉 Choisissez une transcription : ").strip()) - 1
+            transcript_path = str(fichiers['transcripts'][idx])
+
+            # Trouver la vidéo correspondante
+            transcript_name = fichiers['transcripts'][idx].stem.replace('_transcript', '')
+            video_path = None
+            for v in fichiers['videos']:
+                if v.stem == transcript_name:
+                    video_path = str(v)
+                    break
+
+            if not video_path:
+                print(f"⚠️  Vidéo correspondante non trouvée. Veuillez sélectionner une vidéo :")
+                for i, video in enumerate(fichiers['videos'], 1):
+                    print(f"   {i}. {video.name}")
+                idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
+                video_path = str(fichiers['videos'][idx_v])
+
+            generator.traiter_video(etape_depart=4, video_path=video_path, transcript_path=transcript_path)
+
+        else:
+            print("❌ Choix invalide")
+            sys.exit(1)
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Processus interrompu par l'utilisateur")
