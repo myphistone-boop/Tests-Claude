@@ -66,32 +66,30 @@ class YouTubeSubtitleGenerator:
         print("📥 ÉTAPE 1/5 : TÉLÉCHARGEMENT DE LA VIDÉO")
         print("=" * 70)
 
-        options = {
-            'format': 'best[ext=mp4]/best',
-            'outtmpl': str(self.videos_dir / '%(title)s.%(ext)s'),
-            'quiet': False,
-            'no_warnings': False,
-            'nocheckcertificate': True,
-        }
-
         try:
-            with yt_dlp.YoutubeDL(options) as ydl:
-                info = ydl.extract_info(url, download=True)
+            # Première passe : récupérer les infos sans télécharger
+            with yt_dlp.YoutubeDL({'quiet': True, 'nocheckcertificate': True}) as ydl:
+                info = ydl.extract_info(url, download=False)
                 video_title_original = info.get('title', 'video')
                 video_title_clean = nettoyer_nom_fichier(video_title_original)
                 video_ext = info.get('ext', 'mp4')
 
-                # Chemin du fichier téléchargé (avec le titre original)
-                video_path_original = self.videos_dir / f"{video_title_original}.{video_ext}"
-                # Nouveau chemin avec nom nettoyé
-                video_path_clean = self.videos_dir / f"{video_title_clean}.{video_ext}"
+            # Télécharger avec le nom nettoyé directement
+            video_path_clean = self.videos_dir / f"{video_title_clean}.{video_ext}"
 
-                # Renommer le fichier si nécessaire
-                if video_path_original.exists() and video_path_original != video_path_clean:
-                    video_path_original.rename(video_path_clean)
+            options = {
+                'format': 'best[ext=mp4]/best',
+                'outtmpl': str(video_path_clean),
+                'quiet': False,
+                'no_warnings': False,
+                'nocheckcertificate': True,
+            }
 
-                print(f"\n✅ Vidéo téléchargée : {video_title_clean}")
-                return str(video_path_clean), video_title_clean
+            with yt_dlp.YoutubeDL(options) as ydl:
+                ydl.download([url])
+
+            print(f"\n✅ Vidéo téléchargée : {video_title_clean}")
+            return str(video_path_clean), video_title_clean
 
         except Exception as e:
             print(f"❌ Erreur lors du téléchargement : {e}")
