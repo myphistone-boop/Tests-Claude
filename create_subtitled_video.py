@@ -45,8 +45,8 @@ class YouTubeSubtitleGenerator:
         # Désactiver le proxy pour OpenAI (nécessaire sur certains environnements)
         import httpx
         http_client = httpx.Client(
-            proxies=None,  # Désactive tous les proxies
-            verify=False,  # Désactive la vérification SSL si nécessaire
+            trust_env=False,  # Ignore les variables d'environnement proxy
+            verify=False,     # Désactive la vérification SSL si nécessaire
             timeout=60.0
         )
 

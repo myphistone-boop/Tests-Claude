@@ -24,8 +24,8 @@ def test_connection():
     # Créer le client sans proxy
     print("\n🔧 Configuration du client OpenAI sans proxy...")
     http_client = httpx.Client(
-        proxies=None,
-        verify=False,
+        trust_env=False,  # Ignore les variables d'environnement proxy
+        verify=False,      # Désactive la vérification SSL si nécessaire
         timeout=60.0
     )
 
