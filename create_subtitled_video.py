@@ -1502,11 +1502,12 @@ def main():
         print("   4. ⚡ Sous-titrer la VIDÉO COMPLÈTE (méthode rapide ffmpeg/ASS)")
         print("   5. 📱 CRÉER UNE VIDÉO TIKTOK (segment viral + analyse IA)")
         print("   6. 🚀 VIDÉO TIKTOK OPTIMISÉE (hook 3s + détection locale + vertical 9:16)")
+        print("   7. 📱 CONVERTIR EN FORMAT VERTICAL 9:16 (TikTok/Stories)")
 
         # Forcer l'affichage du prompt
         sys.stdout.flush()
 
-        choix = input("\n👉 Votre choix (1-6) : ").strip()
+        choix = input("\n👉 Votre choix (1-7) : ").strip()
 
         if choix == "1":
             # Nouveau téléchargement
@@ -1722,6 +1723,26 @@ def main():
 
             # Créer la vidéo optimisée
             generator.creer_video_tiktok_optimisee(video_path, transcript, video_name)
+
+            print("\n🎉 Processus terminé avec succès !")
+
+        elif choix == "7":
+            # Convertir une vidéo en format vertical 9:16
+            if not fichiers['videos']:
+                print("❌ Aucune vidéo trouvée. Lancez l'étape 1 ou 2 d'abord.")
+                sys.exit(1)
+
+            print("\n📹 VIDÉOS DISPONIBLES :")
+            for i, video in enumerate(fichiers['videos'], 1):
+                print(f"   {i}. {video.name}")
+
+            idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
+            video_path = str(fichiers['videos'][idx_v])
+            video_name = fichiers['videos'][idx_v].stem
+
+            # Convertir en format vertical
+            output_path = generator.output_dir / f"{video_name}_vertical.mp4"
+            generator.crop_vertical_9_16(video_path, str(output_path))
 
             print("\n🎉 Processus terminé avec succès !")
 
