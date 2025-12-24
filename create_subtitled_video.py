@@ -597,9 +597,39 @@ class YouTubeSubtitleGenerator:
             traceback.print_exc()
             sys.exit(1)
 
+    def creer_fichier_srt(self, mots_timestamps, output_path):
+        """Crée un fichier SRT avec un mot par ligne"""
+        with open(output_path, 'w', encoding='utf-8') as f:
+            for idx, mot_info in enumerate(mots_timestamps, 1):
+                # Numéro du sous-titre
+                f.write(f"{idx}\n")
+
+                # Timestamps au format SRT (HH:MM:SS,mmm --> HH:MM:SS,mmm)
+                start = mot_info['start']
+                end = mot_info['end']
+
+                start_h = int(start // 3600)
+                start_m = int((start % 3600) // 60)
+                start_s = int(start % 60)
+                start_ms = int((start % 1) * 1000)
+
+                end_h = int(end // 3600)
+                end_m = int((end % 3600) // 60)
+                end_s = int(end % 60)
+                end_ms = int((end % 1) * 1000)
+
+                f.write(f"{start_h:02d}:{start_m:02d}:{start_s:02d},{start_ms:03d} --> ")
+                f.write(f"{end_h:02d}:{end_m:02d}:{end_s:02d},{end_ms:03d}\n")
+
+                # Le mot en MAJUSCULES
+                f.write(f"{mot_info['word'].strip().upper()}\n")
+
+                # Ligne vide
+                f.write("\n")
+
     def creer_video_tiktok(self, video_path, transcript, video_title):
         """
-        Crée une vidéo au format TikTok (9:16) avec sous-titres cumulatifs mot par mot
+        Crée une vidéo avec sous-titres mot par mot (SIMPLE)
 
         Args:
             video_path (str): Chemin de la vidéo (segment)
@@ -610,49 +640,21 @@ class YouTubeSubtitleGenerator:
             str: Chemin de la vidéo finale
         """
         print("\n" + "=" * 70)
-        print("📱 ÉTAPE 5/6 : CRÉATION VIDÉO FORMAT TIKTOK + SOUS-TITRES")
+        print("📱 ÉTAPE 5/6 : AJOUT DES SOUS-TITRES MOT PAR MOT")
         print("=" * 70)
 
         # Générer un nom de fichier unique
-        output_base = self.output_dir / f"{video_title}_tiktok.mp4"
+        output_base = self.output_dir / f"{video_title}_subtitled.mp4"
         output_path = output_base
         counter = 1
         while output_path.exists():
-            output_path = self.output_dir / f"{video_title}_tiktok_{counter}.mp4"
+            output_path = self.output_dir / f"{video_title}_subtitled_{counter}.mp4"
             counter += 1
 
         if counter > 1:
             print(f"ℹ️  Fichier existant détecté, création de : {output_path.name}")
 
         try:
-            # Charger la vidéo
-            print("⏳ Chargement de la vidéo...")
-            video = VideoFileClip(video_path)
-
-            # Convertir au format vertical TikTok (9:16)
-            print("📱 Conversion au format vertical TikTok (9:16)...")
-            target_width = 1080
-            target_height = 1920
-
-            # Redimensionner la vidéo pour qu'elle tienne dans le format 9:16
-            scale = min(target_width / video.w, target_height / video.h)
-            new_w = int(video.w * scale)
-            new_h = int(video.h * scale)
-
-            from moviepy.editor import ColorClip
-            video_resized = video.resize((new_w, new_h))
-
-            # Créer un fond noir
-            background = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=video.duration)
-
-            # Centrer la vidéo sur le fond noir
-            x_center = (target_width - new_w) // 2
-            y_center = (target_height - new_h) // 2
-            video_centered = video_resized.set_position((x_center, y_center))
-
-            # Composer la vidéo avec le fond
-            video_final = CompositeVideoClip([background, video_centered], size=(target_width, target_height))
-
             # Extraire les mots avec timestamps
             if hasattr(transcript, 'words') and transcript.words:
                 mots_timestamps = [
@@ -664,174 +666,53 @@ class YouTubeSubtitleGenerator:
                     for word in transcript.words
                 ]
             else:
-                mots_timestamps = []
+                print("❌ Pas de mots avec timestamps dans la transcription")
+                sys.exit(1)
 
-            # Détecter les phrases
-            print("📝 Détection des phrases...")
-            phrases = self.detecter_phrases(mots_timestamps)
-            print(f"✅ {len(phrases)} phrases détectées")
+            print(f"📝 {len(mots_timestamps)} mots à sous-titrer")
 
-            # Créer un dossier temporaire pour les images
-            import tempfile
-            temp_dir = Path(tempfile.mkdtemp(prefix="tiktok_subs_"))
-            print(f"📁 Dossier temporaire : {temp_dir}")
+            # Créer le fichier SRT
+            srt_path = self.base_dir / f"{video_title}_subtitles.srt"
+            print(f"⏳ Création du fichier SRT : {srt_path.name}")
+            self.creer_fichier_srt(mots_timestamps, srt_path)
+            print("✅ Fichier SRT créé")
 
-            # Créer les sous-titres avec accumulation
-            print("⏳ Génération des sous-titres cumulatifs...")
-            subtitle_clips = []
-
-            # Charger la police une seule fois
-            print("⏳ Chargement de la police...")
-            try:
-                font = ImageFont.truetype("arialbd.ttf", 70)
-                print("✅ Police Arial Bold chargée")
-            except:
-                try:
-                    font = ImageFont.truetype("arial.ttf", 70)
-                    print("✅ Police Arial chargée")
-                except:
-                    try:
-                        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 70)
-                        print("✅ Police DejaVu chargée")
-                    except:
-                        font = ImageFont.load_default()
-                        print("✅ Police par défaut chargée")
-
-            # Générer les clips pour chaque phrase
-            print(f"\n⏳ Traitement de {len(phrases)} phrase(s)...")
-            image_counter = 0
-
-            for phrase_idx, phrase in enumerate(phrases):
-                try:
-                    print(f"\n📝 Phrase {phrase_idx + 1}/{len(phrases)} - {len(phrase)} mots")
-
-                    # Pour chaque mot de la phrase, créer un clip cumulatif
-                    for mot_idx, mot_info in enumerate(phrase):
-                        try:
-                            # Accumuler les mots jusqu'à ce mot
-                            mots_accumules = ' '.join([m['word'].strip().upper() for m in phrase[:mot_idx + 1]])
-
-                            # Diviser en lignes si trop long
-                            mots_liste = mots_accumules.split()
-                            lines = []
-                            current_line = []
-                            for mot in mots_liste:
-                                current_line.append(mot)
-                                if len(' '.join(current_line)) > 15:
-                                    lines.append(' '.join(current_line))
-                                    current_line = []
-                            if current_line:
-                                lines.append(' '.join(current_line))
-
-                            # Créer l'image de texte
-                            width = target_width - 100
-                            line_height = 80
-                            total_height = len(lines) * line_height + 100
-
-                            img = Image.new('RGBA', (width, total_height), (0, 0, 0, 0))
-                            draw = ImageDraw.Draw(img)
-
-                            # Dessiner chaque ligne
-                            y = 20
-                            for line in lines:
-                                bbox = draw.textbbox((0, 0), line, font=font)
-                                text_width = bbox[2] - bbox[0]
-                                x = (width - text_width) // 2
-
-                                # Contour noir
-                                for offset_x in range(-3, 4):
-                                    for offset_y in range(-3, 4):
-                                        if offset_x != 0 or offset_y != 0:
-                                            draw.text((x + offset_x, y + offset_y), line, font=font, fill='black')
-
-                                # Texte blanc
-                                draw.text((x, y), line, font=font, fill='white')
-                                y += line_height
-
-                            # Sauvegarder l'image comme fichier PNG temporaire
-                            image_path = temp_dir / f"sub_{image_counter:04d}.png"
-                            img.save(str(image_path))
-                            image_counter += 1
-
-                            # Créer ImageClip depuis le fichier
-                            duree = mot_info['end'] - mot_info['start']
-                            txt_clip = ImageClip(str(image_path), duration=duree)
-                            txt_clip = txt_clip.set_start(mot_info['start'])
-                            txt_clip = txt_clip.set_position(('center', target_height * 0.65))
-                            subtitle_clips.append(txt_clip)
-
-                            if (mot_idx + 1) % 5 == 0:
-                                print(f"  {mot_idx + 1}/{len(phrase)} mots traités...")
-
-                        except Exception as e:
-                            print(f"\n⚠️  Erreur sur le mot '{mot_info['word']}': {e}")
-                            import traceback
-                            traceback.print_exc()
-                            continue
-
-                    print(f"✅ Phrase {phrase_idx + 1} terminée")
-
-                except Exception as e:
-                    print(f"\n⚠️  Erreur sur la phrase {phrase_idx + 1}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    continue
-
-            print(f"\n✅ {len(subtitle_clips)} clips de sous-titres créés ({image_counter} images générées)")
-
-            # Composer la vidéo finale
-            print("⏳ Composition de la vidéo finale...")
-            final_video = CompositeVideoClip([video_final] + subtitle_clips, size=(target_width, target_height))
-
-            # Écrire la vidéo
+            # Utiliser ffmpeg pour incruster les sous-titres
             print("\n" + "=" * 70)
-            print("🎬 ÉTAPE 6/6 : ENCODAGE DE LA VIDÉO FINALE")
+            print("🎬 ÉTAPE 6/6 : INCRUSTATION DES SOUS-TITRES AVEC FFMPEG")
             print("=" * 70)
-            print("⏳ Écriture du fichier vidéo... (cela peut prendre plusieurs minutes)")
-            final_video.write_videofile(
-                str(output_path),
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile='temp-audio.m4a',
-                remove_temp=True,
-                fps=30,
-                verbose=False,
-                logger='bar'
-            )
+            print("⏳ Cela peut prendre plusieurs minutes...")
 
-            # Libérer les ressources
-            video.close()
-            video_resized.close()
-            background.close()
-            video_final.close()
-            final_video.close()
+            import subprocess
 
-            # Nettoyer les fichiers temporaires
-            print("⏳ Nettoyage des fichiers temporaires...")
-            import shutil
-            try:
-                shutil.rmtree(temp_dir)
-                print("✅ Fichiers temporaires supprimés")
-            except Exception as e:
-                print(f"⚠️  Impossible de supprimer les fichiers temporaires: {e}")
+            # Style des sous-titres : blanc avec contour noir, centré en bas
+            subtitle_style = "FontName=Arial,FontSize=48,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,OutlineWidth=3,Bold=1,Alignment=2,MarginV=100"
 
-            print(f"\n✅ Vidéo TikTok créée : {output_path.name}")
-            print(f"📱 Format : 1080x1920 (9:16)")
+            cmd = [
+                'ffmpeg',
+                '-i', str(video_path),
+                '-vf', f"subtitles='{str(srt_path).replace(chr(92), '/')}':force_style='{subtitle_style}'",
+                '-c:a', 'copy',
+                str(output_path)
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                print(f"❌ Erreur ffmpeg : {result.stderr}")
+                sys.exit(1)
+
+            # Supprimer le fichier SRT
+            srt_path.unlink()
+
+            print(f"\n✅ Vidéo avec sous-titres créée : {output_path.name}")
             print(f"📊 Taille du fichier : {Path(output_path).stat().st_size / (1024*1024):.2f} MB")
             return str(output_path)
 
         except Exception as e:
-            print(f"❌ Erreur lors de la création de la vidéo TikTok : {e}")
+            print(f"❌ Erreur lors de la création de la vidéo : {e}")
             import traceback
             traceback.print_exc()
-
-            # Nettoyer les fichiers temporaires même en cas d'erreur
-            try:
-                import shutil
-                shutil.rmtree(temp_dir)
-            except:
-                pass
-
             sys.exit(1)
 
     def traiter_video(self, url=None, etape_depart=1, video_path=None, audio_path=None, transcript_path=None, video_title=None):
