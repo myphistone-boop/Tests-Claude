@@ -1522,8 +1522,18 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 video_title = Path(audio_path).stem
             transcript = self.transcrire_avec_whisper(audio_path, video_title)
 
-            # Demander si l'utilisateur veut continuer avec les sous-titres
-            if etape_depart <= 3:  # Seulement si on vient de faire la transcription
+            # Si on vient de la partie 1, continuer automatiquement vers Short TikTok complet
+            if etape_depart == 1:
+                print("\n" + "=" * 70)
+                print("🚀 CRÉATION AUTOMATIQUE DU SHORT TIKTOK")
+                print("=" * 70)
+                print("➡️  Étape suivante : Création du short TikTok complet (1min + sous-titres + portrait)")
+
+                # Continuer automatiquement vers Option 6
+                return self.creer_video_tiktok_optimisee(video_path, transcript, video_title)
+
+            # Pour les autres étapes de départ (2-3), demander confirmation
+            elif etape_depart <= 3:  # Seulement si on vient de faire la transcription
                 print("\n" + "=" * 70)
                 print("🎬 ÉTAPE SUIVANTE : GÉNÉRATION DES SOUS-TITRES")
                 print("=" * 70)
@@ -1589,7 +1599,7 @@ def main():
         print(f"   Transcriptions : {len(fichiers['transcripts'])} fichier(s)")
 
         print("\n🎬 CHOISISSEZ L'ÉTAPE DE DÉPART :")
-        print("   1. Télécharger une nouvelle vidéo YouTube (tout recommencer)")
+        print("   1. 🚀 TÉLÉCHARGER & CRÉER SHORT TIKTOK (pipeline complet 1→2→3→6)")
         print("   2. Utiliser une vidéo existante (extraire l'audio)")
         print("   3. Utiliser un audio existant (transcrire)")
         print("   4. ⚡ Sous-titrer la VIDÉO COMPLÈTE (méthode rapide ffmpeg/ASS)")
