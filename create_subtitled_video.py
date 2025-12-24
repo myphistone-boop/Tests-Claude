@@ -597,35 +597,97 @@ class YouTubeSubtitleGenerator:
             traceback.print_exc()
             sys.exit(1)
 
-    def creer_fichier_srt(self, mots_timestamps, output_path):
-        """Crée un fichier SRT avec un mot par ligne"""
+    def grouper_mots(self, mots_timestamps, max_mots=3):
+        """Groupe les mots par 2-3 maximum"""
+        groupes = []
+        groupe_actuel = []
+
+        for mot_info in mots_timestamps:
+            groupe_actuel.append(mot_info)
+            # Regrouper par 2-3 mots
+            if len(groupe_actuel) >= random.choice([2, 3]):
+                groupes.append(groupe_actuel)
+                groupe_actuel = []
+
+        if groupe_actuel:
+            groupes.append(groupe_actuel)
+
+        return groupes
+
+    def format_timestamp_ass(self, seconds):
+        """Convertit secondes en format ASS (H:MM:SS.CC)"""
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        cs = int((seconds % 1) * 100)  # centisecondes
+        return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+    def creer_fichier_ass_anime(self, mots_timestamps, output_path):
+        """Crée un fichier ASS avec animations TikTok (blanc->jaune->blanc)"""
+
+        # Grouper les mots par 2-3
+        groupes = self.grouper_mots(mots_timestamps)
+
         with open(output_path, 'w', encoding='utf-8') as f:
-            for idx, mot_info in enumerate(mots_timestamps, 1):
-                # Numéro du sous-titre
-                f.write(f"{idx}\n")
+            # En-tête ASS
+            f.write("[Script Info]\n")
+            f.write("Title: TikTok Animated Subtitles\n")
+            f.write("ScriptType: v4.00+\n")
+            f.write("WrapStyle: 0\n")
+            f.write("PlayResX: 1920\n")
+            f.write("PlayResY: 1080\n")
+            f.write("\n")
 
-                # Timestamps au format SRT (HH:MM:SS,mmm --> HH:MM:SS,mmm)
-                start = mot_info['start']
-                end = mot_info['end']
+            # Styles
+            f.write("[V4+ Styles]\n")
+            f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+            # Style par défaut : blanc avec contour noir
+            f.write("Style: Default,Arial,70,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,10,10,80,1\n")
+            f.write("\n")
 
-                start_h = int(start // 3600)
-                start_m = int((start % 3600) // 60)
-                start_s = int(start % 60)
-                start_ms = int((start % 1) * 1000)
+            # Événements
+            f.write("[Events]\n")
+            f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 
-                end_h = int(end // 3600)
-                end_m = int((end % 3600) // 60)
-                end_s = int(end % 60)
-                end_ms = int((end % 1) * 1000)
+            # Générer les sous-titres animés
+            for groupe_idx, groupe in enumerate(groupes):
+                start_time = groupe[0]['start']
+                end_time = groupe[-1]['end']
 
-                f.write(f"{start_h:02d}:{start_m:02d}:{start_s:02d},{start_ms:03d} --> ")
-                f.write(f"{end_h:02d}:{end_m:02d}:{end_s:02d},{end_ms:03d}\n")
+                # Position aléatoire légèrement décalée
+                pos_x = random.randint(900, 1020)  # Centre ± offset
+                pos_y = random.randint(830, 920)   # Bas avec variation
 
-                # Le mot en MAJUSCULES
-                f.write(f"{mot_info['word'].strip().upper()}\n")
+                # Rotation aléatoire légère (-8° à +8°)
+                rotation = random.randint(-8, 8)
 
-                # Ligne vide
-                f.write("\n")
+                # Taille de police variable
+                font_size = random.choice([65, 70, 75, 80, 85])
+
+                # Pour chaque mot du groupe, créer un événement avec animation
+                for mot_idx, mot_info in enumerate(groupe):
+                    mot_start = mot_info['start']
+                    mot_end = mot_info['end']
+
+                    # Construire le texte avec animation de couleur
+                    texte_groupe = ""
+                    for i, m in enumerate(groupe):
+                        mot_texte = m['word'].strip().upper()
+
+                        if i == mot_idx:
+                            # Mot actif = JAUNE (&H00FFFF)
+                            texte_groupe += r"{\c&H00FFFF&}" + mot_texte + r"{\c&HFFFFFF&} "
+                        else:
+                            # Autre mot = BLANC (&HFFFFFF)
+                            texte_groupe += mot_texte + " "
+
+                    texte_groupe = texte_groupe.strip()
+
+                    # Codes de style inline : position, rotation, taille
+                    style_code = f"{{\\pos({pos_x},{pos_y})}}{{\\frz{rotation}}}{{\\fs{font_size}}}"
+
+                    # Écrire l'événement
+                    f.write(f"Dialogue: 0,{self.format_timestamp_ass(mot_start)},{self.format_timestamp_ass(mot_end)},Default,,0,0,0,,{style_code}{texte_groupe}\n")
 
     def creer_video_tiktok(self, video_path, transcript, video_title):
         """
@@ -671,46 +733,27 @@ class YouTubeSubtitleGenerator:
 
             print(f"📝 {len(mots_timestamps)} mots à sous-titrer")
 
-            # Créer le fichier SRT
-            srt_path = self.base_dir / f"{video_title}_subtitles.srt"
-            print(f"⏳ Création du fichier SRT : {srt_path.name}")
-            self.creer_fichier_srt(mots_timestamps, srt_path)
-            print("✅ Fichier SRT créé")
+            # Créer le fichier ASS avec animations TikTok
+            ass_path = self.base_dir / f"{video_title}_subtitles.ass"
+            print(f"⏳ Création du fichier ASS avec animations TikTok...")
+            print("   🎨 Style : Groupes de 2-3 mots BLANCS → JAUNE quand parlés → BLANC")
+            self.creer_fichier_ass_anime(mots_timestamps, ass_path)
+            print("✅ Fichier ASS créé avec animations")
 
             # Utiliser ffmpeg pour incruster les sous-titres
             print("\n" + "=" * 70)
             print("🎬 ÉTAPE 6/6 : INCRUSTATION SOUS-TITRES STYLE TIKTOK VIRAL")
             print("=" * 70)
             print("⏳ Cela peut prendre plusieurs minutes...")
-            print("🎨 Style : Texte JAUNE vif + Contour NOIR épais + Fond semi-transparent")
+            print("🎨 Style : Animations ASS avec positions/rotations/tailles aléatoires")
 
             import subprocess
 
-            # Style viral TikTok/CapCut (basé sur recherche 2024) :
-            # - Texte JAUNE vif (&H00FFFF en ASS = &HAABBGGRR format)
-            # - Contour NOIR ÉPAIS (Outline=4, BorderStyle=3)
-            # - Police grasse grande (FontSize=72, Bold=-1)
-            # - Fond semi-transparent noir (BackColour avec alpha)
-            # - Centré en bas (Alignment=2, MarginV=80)
-
-            subtitle_style = (
-                "FontName=Arial,"
-                "FontSize=72,"
-                "PrimaryColour=&H00FFFF,"    # JAUNE vif (BGR: Blue=FF, Green=FF, Red=00)
-                "OutlineColour=&H000000,"    # NOIR
-                "BackColour=&H80000000,"     # Fond noir semi-transparent (alpha=80)
-                "Outline=4,"                  # Contour ÉPAIS (4 pixels)
-                "Shadow=2,"                   # Ombre portée légère
-                "Bold=-1,"                    # Gras activé
-                "BorderStyle=3,"              # Contour opaque + fond
-                "Alignment=2,"                # Centré horizontalement en bas
-                "MarginV=80"                  # Marge basse (80 pixels)
-            )
-
+            # Utiliser le filtre 'ass' pour ASS avec animations inline
             cmd = [
                 'ffmpeg',
                 '-i', str(video_path),
-                '-vf', f"subtitles='{str(srt_path).replace(chr(92), '/')}':force_style='{subtitle_style}'",
+                '-vf', f"ass='{str(ass_path).replace(chr(92), '/')}'",
                 '-c:a', 'copy',
                 str(output_path)
             ]
@@ -721,8 +764,8 @@ class YouTubeSubtitleGenerator:
                 print(f"❌ Erreur ffmpeg : {result.stderr}")
                 sys.exit(1)
 
-            # Supprimer le fichier SRT
-            srt_path.unlink()
+            # Supprimer le fichier ASS
+            ass_path.unlink()
 
             print(f"\n✅ Vidéo avec sous-titres créée : {output_path.name}")
             print(f"📊 Taille du fichier : {Path(output_path).stat().st_size / (1024*1024):.2f} MB")
