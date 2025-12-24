@@ -1170,6 +1170,93 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             print("   Utilisation de la vidéo originale...")
             return video_path
 
+    def resize_vertical_9_16_avec_marges(self, video_path, output_path, target_height=1920):
+        """
+        Resize la vidéo en format vertical 9:16 AVEC MARGES (letterbox)
+        Garde toute la vidéo visible en ajoutant des barres noires
+
+        Args:
+            video_path: Vidéo source
+            output_path: Vidéo de sortie
+            target_height: Hauteur cible (défaut 1920 pour TikTok)
+
+        Returns:
+            str: Chemin vidéo avec marges
+        """
+        print("\n" + "=" * 70)
+        print("📱 CONVERSION FORMAT VERTICAL 9:16 (AVEC MARGES)")
+        print("=" * 70)
+
+        try:
+            from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip
+
+            print("   📂 Chargement de la vidéo...")
+            video = VideoFileClip(video_path)
+            w, h = video.size
+
+            print(f"   📐 Dimensions originales : {w}x{h}")
+
+            # Dimensions cibles 9:16
+            target_ratio = 9 / 16
+            target_width = (int(target_height * target_ratio) // 2) * 2
+
+            print(f"   🎯 Dimensions cibles : {target_width}x{target_height}")
+
+            # Calculer le resize pour que la vidéo tienne dans le cadre
+            current_ratio = w / h
+
+            if current_ratio > target_ratio:
+                # Vidéo plus large → ajuster sur la largeur
+                new_width = target_width
+                new_height = (int(target_width / current_ratio) // 2) * 2
+                resize_video = video.resize(width=new_width)
+                print(f"   📏 Resize : {new_width}x{new_height} (ajusté sur largeur)")
+            else:
+                # Vidéo plus haute → ajuster sur la hauteur
+                new_height = target_height
+                new_width = (int(target_height * current_ratio) // 2) * 2
+                resize_video = video.resize(height=new_height)
+                print(f"   📏 Resize : {new_width}x{new_height} (ajusté sur hauteur)")
+
+            # Créer le fond noir
+            background = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=video.duration)
+
+            # Centrer la vidéo sur le fond
+            video_centered = resize_video.set_position(('center', 'center'))
+
+            # Composer
+            print("   🎨 Ajout des marges noires...")
+            final = CompositeVideoClip([background, video_centered], size=(target_width, target_height))
+
+            # Copier l'audio
+            if video.audio:
+                final = final.set_audio(video.audio)
+
+            # Sauvegarder avec paramètres d'encodage compatibles
+            print("\n📊 Progression de l'encodage :")
+            final.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                preset='medium',
+                ffmpeg_params=['-pix_fmt', 'yuv420p'],
+                verbose=False,
+                logger='bar'
+            )
+
+            video.close()
+            resize_video.close()
+            background.close()
+            final.close()
+
+            print(f"\n✅ Format 9:16 avec marges appliqué avec succès !")
+            return output_path
+
+        except Exception as e:
+            print(f"\n⚠️  Erreur lors du resize avec marges : {e}")
+            print("   Utilisation de la vidéo originale...")
+            return video_path
+
     def _format_time(self, seconds):
         """Formate les secondes en MM:SS"""
         minutes = int(seconds // 60)
@@ -1298,9 +1385,9 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         Fonctionnalités:
         - Détection locale des moments viraux
         - Extraction d'un SEGMENT viral (60-90s)
-        - Hook de 3 secondes au début du segment
-        - Format vertical 9:16
         - Sous-titres animés TikTok
+        - Hook de 3 secondes au début du segment
+        - Format vertical 9:16 AVEC MARGES (garde toute la vidéo visible)
 
         Args:
             video_path: Vidéo source complète
@@ -1382,9 +1469,9 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             str(video_hook_path)
         )
 
-        # Étape 6 : Crop vertical 9:16
+        # Étape 6 : Format vertical 9:16 avec marges (garde toute la vidéo visible)
         final_path = self.output_dir / f"{video_title}_optimized.mp4"
-        video_final = self.crop_vertical_9_16(video_with_hook, str(final_path))
+        video_final = self.resize_vertical_9_16_avec_marges(video_with_hook, str(final_path))
 
         print("\n" + "=" * 70)
         print("✨ VIDÉO OPTIMISÉE TERMINÉE !")
@@ -1503,8 +1590,8 @@ def main():
         print("   3. Utiliser un audio existant (transcrire)")
         print("   4. ⚡ Sous-titrer la VIDÉO COMPLÈTE (méthode rapide ffmpeg/ASS)")
         print("   5. 📱 CRÉER UNE VIDÉO TIKTOK (segment viral + analyse IA)")
-        print("   6. 🚀 VIDÉO TIKTOK OPTIMISÉE (hook 3s + détection locale + vertical 9:16)")
-        print("   7. 📱 CONVERTIR EN FORMAT VERTICAL 9:16 (TikTok/Stories)")
+        print("   6. 🚀 SHORT TIKTOK COMPLET (1min + sous-titres + portrait 9:16 avec marges)")
+        print("   7. 📱 CONVERTIR EN FORMAT VERTICAL 9:16 (crop sans marges)")
 
         # Forcer l'affichage du prompt
         sys.stdout.flush()
