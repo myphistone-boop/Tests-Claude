@@ -1049,25 +1049,33 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         Returns:
             str: Chemin de la vidéo avec hook
         """
-        print("\n🎣 Ajout du hook viral au début...")
+        print("\n" + "=" * 70)
+        print("🎣 AJOUT DU HOOK VIRAL AU DÉBUT")
+        print("=" * 70)
+        print(f"⏳ Extraction du hook ({hook_end - hook_start:.1f}s) + assemblage...")
 
         try:
             from moviepy.editor import VideoFileClip, concatenate_videoclips, ColorClip, CompositeVideoClip
             from moviepy.video.fx import fadein, fadeout
 
             # Charger la vidéo
+            print("   📂 Chargement de la vidéo...")
             video = VideoFileClip(video_path)
 
             # Extraire le hook
+            print(f"   ✂️  Extraction du hook ({self._format_time(hook_start)} → {self._format_time(hook_end)})...")
             hook = video.subclip(hook_start, hook_end)
 
             # Créer une transition flash blanc (0.2s)
+            print("   ⚡ Création de la transition flash...")
             flash = ColorClip(size=video.size, color=(255, 255, 255), duration=0.2)
 
             # Assembler: Hook → Flash → Vidéo complète
+            print("   🔨 Assemblage : [Hook] → [Flash] → [Vidéo]...")
             final = concatenate_videoclips([hook, flash, video], method="compose")
 
             # Sauvegarder
+            print("\n📊 Progression de l'encodage :")
             final.write_videofile(
                 output_path,
                 codec='libx264',
@@ -1079,11 +1087,11 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             video.close()
             final.close()
 
-            print(f"✅ Hook ajouté : {hook_end - hook_start:.1f}s au début")
+            print(f"\n✅ Hook ajouté avec succès !")
             return output_path
 
         except Exception as e:
-            print(f"⚠️  Erreur lors de l'ajout du hook : {e}")
+            print(f"\n⚠️  Erreur lors de l'ajout du hook : {e}")
             print("   Utilisation de la vidéo sans hook...")
             return video_path
 
@@ -1098,13 +1106,18 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         Returns:
             str: Chemin vidéo croppée
         """
-        print("\n📱 Conversion au format vertical 9:16...")
+        print("\n" + "=" * 70)
+        print("📱 CONVERSION FORMAT VERTICAL 9:16")
+        print("=" * 70)
 
         try:
             from moviepy.editor import VideoFileClip
 
+            print("   📂 Chargement de la vidéo...")
             video = VideoFileClip(video_path)
             w, h = video.size
+
+            print(f"   📐 Dimensions originales : {w}x{h}")
 
             # Calculer les dimensions 9:16
             target_ratio = 9 / 16
@@ -1116,6 +1129,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 x_center = w // 2
                 x1 = x_center - new_width // 2
                 y1 = 0
+                print(f"   ✂️  Crop horizontal : {new_width}x{h} (centré)")
                 cropped = video.crop(x1=x1, y1=y1, width=new_width, height=h)
             else:
                 # Vidéo trop haute → crop vertical
@@ -1123,9 +1137,11 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 y_center = h // 2
                 x1 = 0
                 y1 = y_center - new_height // 2
+                print(f"   ✂️  Crop vertical : {w}x{new_height} (centré)")
                 cropped = video.crop(x1=x1, y1=y1, width=w, height=new_height)
 
             # Sauvegarder
+            print("\n📊 Progression de l'encodage :")
             cropped.write_videofile(
                 output_path,
                 codec='libx264',
@@ -1137,11 +1153,11 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             video.close()
             cropped.close()
 
-            print(f"✅ Format 9:16 appliqué")
+            print(f"\n✅ Format 9:16 appliqué avec succès !")
             return output_path
 
         except Exception as e:
-            print(f"⚠️  Erreur lors du crop : {e}")
+            print(f"\n⚠️  Erreur lors du crop : {e}")
             print("   Utilisation de la vidéo originale...")
             return video_path
 
@@ -1212,27 +1228,46 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
             # Utiliser ffmpeg pour incruster les sous-titres
             print("\n" + "=" * 70)
-            print("🎬 ÉTAPE 6/6 : INCRUSTATION SOUS-TITRES STYLE TIKTOK VIRAL")
+            print("🎬 INCRUSTATION SOUS-TITRES STYLE TIKTOK")
             print("=" * 70)
-            print("⏳ Cela peut prendre plusieurs minutes...")
-            print("🎨 Style : Animations ASS avec positions/rotations/tailles aléatoires")
+            print(f"⏳ Incrustation de {len(mots_timestamps)} sous-titres...")
+            print("📊 Progression ffmpeg :")
 
             import subprocess
 
             # Utiliser le filtre 'ass' pour ASS avec animations inline
             cmd = [
                 'ffmpeg',
+                '-y',  # Écraser le fichier de sortie
                 '-i', str(video_path),
                 '-vf', f"ass='{str(ass_path).replace(chr(92), '/')}'",
                 '-c:a', 'copy',
+                '-progress', 'pipe:1',  # Afficher la progression
+                '-loglevel', 'warning',  # Réduire le bruit
                 str(output_path)
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # Lancer ffmpeg et afficher la progression
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
-            if result.returncode != 0:
-                print(f"❌ Erreur ffmpeg : {result.stderr}")
+            print("   ", end='', flush=True)
+            dots = 0
+            for line in process.stdout:
+                if 'out_time_ms' in line or 'progress' in line:
+                    print(".", end='', flush=True)
+                    dots += 1
+                    if dots % 50 == 0:
+                        print(f" [{dots} frames]")
+                        print("   ", end='', flush=True)
+
+            process.wait()
+
+            if process.returncode != 0:
+                stderr = process.stderr.read()
+                print(f"\n❌ Erreur ffmpeg : {stderr}")
                 sys.exit(1)
+
+            print(f"\n✅ Incrustation terminée !")
 
             # Supprimer le fichier ASS
             ass_path.unlink()
