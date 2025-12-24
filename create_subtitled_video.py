@@ -679,14 +679,33 @@ class YouTubeSubtitleGenerator:
 
             # Utiliser ffmpeg pour incruster les sous-titres
             print("\n" + "=" * 70)
-            print("🎬 ÉTAPE 6/6 : INCRUSTATION DES SOUS-TITRES AVEC FFMPEG")
+            print("🎬 ÉTAPE 6/6 : INCRUSTATION SOUS-TITRES STYLE TIKTOK VIRAL")
             print("=" * 70)
             print("⏳ Cela peut prendre plusieurs minutes...")
+            print("🎨 Style : Texte JAUNE vif + Contour NOIR épais + Fond semi-transparent")
 
             import subprocess
 
-            # Style des sous-titres : blanc avec contour noir, centré en bas
-            subtitle_style = "FontName=Arial,FontSize=48,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,OutlineWidth=3,Bold=1,Alignment=2,MarginV=100"
+            # Style viral TikTok/CapCut (basé sur recherche 2024) :
+            # - Texte JAUNE vif (&H00FFFF en ASS = &HAABBGGRR format)
+            # - Contour NOIR ÉPAIS (Outline=4, BorderStyle=3)
+            # - Police grasse grande (FontSize=72, Bold=-1)
+            # - Fond semi-transparent noir (BackColour avec alpha)
+            # - Centré en bas (Alignment=2, MarginV=80)
+
+            subtitle_style = (
+                "FontName=Arial,"
+                "FontSize=72,"
+                "PrimaryColour=&H00FFFF,"    # JAUNE vif (BGR: Blue=FF, Green=FF, Red=00)
+                "OutlineColour=&H000000,"    # NOIR
+                "BackColour=&H80000000,"     # Fond noir semi-transparent (alpha=80)
+                "Outline=4,"                  # Contour ÉPAIS (4 pixels)
+                "Shadow=2,"                   # Ombre portée légère
+                "Bold=-1,"                    # Gras activé
+                "BorderStyle=3,"              # Contour opaque + fond
+                "Alignment=2,"                # Centré horizontalement en bas
+                "MarginV=80"                  # Marge basse (80 pixels)
+            )
 
             cmd = [
                 'ffmpeg',
