@@ -714,7 +714,7 @@ class YouTubeSubtitleGenerator:
                     # Écrire l'événement
                     f.write(f"Dialogue: 0,{self.format_timestamp_ass(mot_start)},{self.format_timestamp_ass(mot_end)},Default,,0,0,0,,{style_code}{texte_groupe}\n")
 
-    def analyser_moments_viraux(self, transcript, video_title, duree_cible=60):
+    def analyser_moments_viraux(self, transcript, video_title, duree_cible=60, nb_segments=5):
         """
         Analyse la transcription pour identifier les moments viraux potentiels
 
@@ -722,12 +722,13 @@ class YouTubeSubtitleGenerator:
             transcript (dict): Transcription Whisper avec mots et timestamps
             video_title (str): Titre de la vidéo
             duree_cible (float): Durée cible des segments en secondes
+            nb_segments (int): Nombre de segments à identifier (défaut: 5)
 
         Returns:
             dict: Analyse avec segments viraux triés par score
         """
         print("\n" + "=" * 70)
-        print("🎯 ANALYSE IA DES MOMENTS VIRAUX (GPT-4-mini)")
+        print(f"🎯 ANALYSE IA DES MOMENTS VIRAUX (GPT-4-mini) - TOP {nb_segments}")
         print("=" * 70)
 
         # Vérifier si l'analyse existe déjà
@@ -775,7 +776,7 @@ class YouTubeSubtitleGenerator:
         transcription_complete = '\n'.join(texte_avec_temps)
 
         # Prompt optimisé pour détecter les moments viraux TikTok
-        prompt = f"""Analyse cette transcription de vidéo YouTube et identifie les 5 segments de {int(duree_cible)}-90 secondes avec le PLUS HAUT POTENTIEL VIRAL pour TikTok.
+        prompt = f"""Analyse cette transcription de vidéo YouTube et identifie les {nb_segments} segments de {int(duree_cible)}-90 secondes avec le PLUS HAUT POTENTIEL VIRAL pour TikTok.
 
 CRITÈRES DE VIRALITÉ TIKTOK :
 1. **Hook puissant** : Phrase choc/question intrigante dans les 3 premières secondes
@@ -873,18 +874,19 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         Returns:
             tuple: (start_time, end_time, is_random) ou None si aléatoire choisi
         """
-        print("\n" + "=" * 70)
-        print("🎯 TOP 5 MOMENTS VIRAUX DÉTECTÉS")
-        print("=" * 70)
-
         segments = analysis.get('segments', [])
+        nb_segments = len(segments)
+
+        print("\n" + "=" * 70)
+        print(f"🎯 TOP {nb_segments} MOMENTS VIRAUX DÉTECTÉS")
+        print("=" * 70)
 
         if not segments:
             print("⚠️  Aucun segment viral détecté, passage en mode aléatoire")
             return None
 
         # Afficher les segments
-        for i, segment in enumerate(segments[:5], 1):
+        for i, segment in enumerate(segments, 1):
             print(f"\n[{i}] ⭐ {segment.get('viral_score', 0)}/10 - "
                   f"{self._format_time(segment['start_time'])} → {self._format_time(segment['end_time'])} "
                   f"({int(segment['duration'])}s)")
@@ -896,7 +898,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         print(f"[Q] ❌ Quitter")
 
         # Demander le choix
-        choix = input("\n👉 Votre choix (1-5, R, Q) : ").strip().upper()
+        choix = input(f"\n👉 Votre choix (1-{nb_segments}, R, Q) : ").strip().upper()
 
         if choix == 'Q':
             print("👋 Au revoir !")
@@ -1094,8 +1096,8 @@ def main():
         print("   1. Télécharger une nouvelle vidéo YouTube (tout recommencer)")
         print("   2. Utiliser une vidéo existante (extraire l'audio)")
         print("   3. Utiliser un audio existant (transcrire)")
-        print("   4. Utiliser une transcription existante (générer sous-titres)")
-        print("   5. 📱 CRÉER UNE VIDÉO TIKTOK (segment aléatoire + sous-titres cumulatifs)")
+        print("   4. ⚡ Sous-titrer la VIDÉO COMPLÈTE (méthode rapide ffmpeg/ASS)")
+        print("   5. 📱 CRÉER UNE VIDÉO TIKTOK (segment viral + analyse IA)")
 
         # Forcer l'affichage du prompt
         sys.stdout.flush()
@@ -1159,7 +1161,7 @@ def main():
             generator.traiter_video(etape_depart=3, video_path=video_path, audio_path=audio_path)
 
         elif choix == "4":
-            # Utiliser transcription existante
+            # Sous-titrer la vidéo complète avec la méthode rapide (ffmpeg/ASS)
             if not fichiers['transcripts']:
                 print("❌ Aucune transcription trouvée. Lancez l'étape 1, 2 ou 3 d'abord.")
                 sys.exit(1)
@@ -1190,7 +1192,18 @@ def main():
                 idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
                 video_path = str(fichiers['videos'][idx_v])
 
-            generator.traiter_video(etape_depart=4, video_path=video_path, transcript_path=transcript_path)
+            # Charger la transcription
+            print("\n" + "=" * 70)
+            print("📂 CHARGEMENT DE LA TRANSCRIPTION")
+            print("=" * 70)
+            transcript = generator.charger_transcription(transcript_path)
+            print(f"✅ Transcription chargée : {Path(transcript_path).name}")
+
+            # Sous-titrer la vidéo complète avec la méthode rapide
+            video_name = Path(video_path).stem
+            generator.creer_video_tiktok(video_path, transcript, video_name)
+
+            print("\n🎉 Processus terminé avec succès !")
 
         elif choix == "5":
             # Créer une vidéo TikTok avec segment aléatoire
@@ -1232,8 +1245,25 @@ def main():
                 print("❌ Durée invalide")
                 sys.exit(1)
 
+            # Demander le nombre de segments à analyser
+            print("\n💰 OPTIMISATION DES COÛTS API")
+            print("   Plus de segments = meilleure sélection, mais coût API plus élevé")
+            print("   Recommandation : 3-5 segments pour un bon compromis")
+            nb_segments_str = input("👉 Nombre de segments viraux à identifier (1-10, défaut: 5) : ").strip()
+            try:
+                if nb_segments_str == "":
+                    nb_segments = 5
+                else:
+                    nb_segments = int(nb_segments_str)
+                    if nb_segments < 1 or nb_segments > 10:
+                        print("⚠️  Nombre invalide, utilisation de la valeur par défaut (5)")
+                        nb_segments = 5
+            except ValueError:
+                print("⚠️  Nombre invalide, utilisation de la valeur par défaut (5)")
+                nb_segments = 5
+
             # PHASE 4 : Analyser les moments viraux avec GPT-4-mini
-            analysis = generator.analyser_moments_viraux(transcript, video_name, duree_cible=duree_souhaitee)
+            analysis = generator.analyser_moments_viraux(transcript, video_name, duree_cible=duree_souhaitee, nb_segments=nb_segments)
 
             # PHASE 4.5 : Choisir le segment (viral ou aléatoire)
             choix_segment = generator.choisir_segment_viral(analysis, transcript, duree_souhaitee)
