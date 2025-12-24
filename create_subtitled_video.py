@@ -1073,6 +1073,27 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 video_title = Path(audio_path).stem
             transcript = self.transcrire_avec_whisper(audio_path, video_title)
 
+            # Demander si l'utilisateur veut continuer avec les sous-titres
+            if etape_depart <= 3:  # Seulement si on vient de faire la transcription
+                print("\n" + "=" * 70)
+                print("🎬 ÉTAPE SUIVANTE : GÉNÉRATION DES SOUS-TITRES")
+                print("=" * 70)
+                print("Vous pouvez maintenant :")
+                print("   1. Générer les sous-titres pour la vidéo complète (maintenant)")
+                print("   2. Arrêter ici et générer les sous-titres plus tard (option 4 ou 5)")
+
+                choix_suite = input("\n👉 Voulez-vous générer les sous-titres maintenant ? (o/n) : ").strip().lower()
+
+                if choix_suite != 'o':
+                    print("\n✅ Transcription terminée et sauvegardée !")
+                    print(f"📁 Vidéo : {video_path}")
+                    print(f"📁 Audio : {audio_path}")
+                    print(f"📁 Transcription : {self.transcripts_dir / f'{video_title}_transcript.json'}")
+                    print("\n💡 Pour générer les sous-titres plus tard, relancez le script et choisissez :")
+                    print("   - Option 4 : Sous-titrer la vidéo complète")
+                    print("   - Option 5 : Créer un segment TikTok viral")
+                    return  # Arrêter ici
+
         # Étape 4 : Charger la transcription si on démarre ici
         if etape_depart == 4:
             if not video_title:
