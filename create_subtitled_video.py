@@ -675,52 +675,64 @@ class YouTubeSubtitleGenerator:
             print("⏳ Génération des sous-titres cumulatifs...")
             subtitle_clips = []
 
+            # Charger la police une seule fois
+            print("⏳ Chargement de la police...")
+            try:
+                font = ImageFont.truetype("arialbd.ttf", 70)
+                print("✅ Police Arial Bold chargée")
+            except:
+                try:
+                    font = ImageFont.truetype("arial.ttf", 70)
+                    print("✅ Police Arial chargée")
+                except:
+                    try:
+                        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 70)
+                        print("✅ Police DejaVu chargée")
+                    except:
+                        font = ImageFont.load_default()
+                        print("✅ Police par défaut chargée")
+
             def make_textclip_multiline(text_lines):
                 """Crée un clip avec plusieurs lignes de texte"""
                 if not text_lines:
                     return None
 
-                width = target_width - 100  # Marges
-                line_height = 80
-                total_height = len(text_lines) * line_height + 100
-
-                img = Image.new('RGBA', (width, total_height), (0, 0, 0, 0))
-                draw = ImageDraw.Draw(img)
-
-                # Charger la police
                 try:
-                    font = ImageFont.truetype("arialbd.ttf", 70)
-                except:
-                    try:
-                        font = ImageFont.truetype("arial.ttf", 70)
-                    except:
-                        try:
-                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 70)
-                        except:
-                            font = ImageFont.load_default()
+                    width = target_width - 100  # Marges
+                    line_height = 80
+                    total_height = len(text_lines) * line_height + 100
 
-                # Dessiner chaque ligne
-                y = 20
-                for line in text_lines:
-                    bbox = draw.textbbox((0, 0), line, font=font)
-                    text_width = bbox[2] - bbox[0]
-                    x = (width - text_width) // 2
+                    img = Image.new('RGBA', (width, total_height), (0, 0, 0, 0))
+                    draw = ImageDraw.Draw(img)
 
-                    # Contour noir
-                    for offset_x in range(-4, 5):
-                        for offset_y in range(-4, 5):
-                            draw.text((x + offset_x, y + offset_y), line, font=font, fill='black')
+                    # Dessiner chaque ligne
+                    y = 20
+                    for line in text_lines:
+                        bbox = draw.textbbox((0, 0), line, font=font)
+                        text_width = bbox[2] - bbox[0]
+                        x = (width - text_width) // 2
 
-                    # Texte blanc
-                    draw.text((x, y), line, font=font, fill='white')
-                    y += line_height
+                        # Contour noir simplifié pour performance
+                        for offset_x in range(-3, 4):
+                            for offset_y in range(-3, 4):
+                                if offset_x != 0 or offset_y != 0:
+                                    draw.text((x + offset_x, y + offset_y), line, font=font, fill='black')
 
-                img_array = np.array(img)
-                return ImageClip(img_array)
+                        # Texte blanc
+                        draw.text((x, y), line, font=font, fill='white')
+                        y += line_height
+
+                    img_array = np.array(img)
+                    return ImageClip(img_array)
+                except Exception as e:
+                    print(f"\n⚠️  Erreur création image texte: {e}")
+                    return None
 
             # Générer les clips pour chaque phrase
-            for phrase_idx, phrase in enumerate(tqdm(phrases, desc="Phrases", unit="phrase")):
+            print(f"\n⏳ Traitement de {len(phrases)} phrase(s)...")
+            for phrase_idx, phrase in enumerate(phrases):
                 try:
+                    print(f"\n📝 Phrase {phrase_idx + 1}/{len(phrases)} - {len(phrase)} mots")
                     phrase_start = phrase[0]['start']
                     phrase_end = phrase[-1]['end']
 
@@ -742,6 +754,7 @@ class YouTubeSubtitleGenerator:
                             if current_line:
                                 lines.append(' '.join(current_line))
 
+                            print(f"  Mot {mot_idx + 1}/{len(phrase)}: '{mot_info['word']}' → Création image...", end=' ')
                             txt_clip = make_textclip_multiline(lines)
                             if txt_clip:
                                 # Définir la durée du clip
@@ -751,11 +764,18 @@ class YouTubeSubtitleGenerator:
                                 # Position en bas de l'écran
                                 txt_clip = txt_clip.set_position(('center', target_height * 0.65))
                                 subtitle_clips.append(txt_clip)
+                                print("✅")
+                            else:
+                                print("❌ (clip vide)")
                         except Exception as e:
                             print(f"\n⚠️  Erreur sur le mot '{mot_info['word']}': {e}")
+                            import traceback
+                            traceback.print_exc()
                             continue
                 except Exception as e:
                     print(f"\n⚠️  Erreur sur la phrase {phrase_idx + 1}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
 
             print(f"\n✅ {len(subtitle_clips)} clips de sous-titres créés")
