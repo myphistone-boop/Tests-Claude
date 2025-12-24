@@ -1282,22 +1282,22 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             traceback.print_exc()
             sys.exit(1)
 
-    def creer_video_tiktok_optimisee(self, video_path, transcript, video_title, duree_segment=60, use_ai=True):
+    def creer_video_tiktok_optimisee(self, video_path, transcript, video_title, duree_segment=60):
         """
         Crée une vidéo TikTok OPTIMISÉE avec toutes les techniques virales
 
         Fonctionnalités:
-        - Hook de 3 secondes au début
-        - Détection locale + optionnellement IA des moments viraux
+        - Détection locale des moments viraux
+        - Extraction d'un SEGMENT viral (60-90s)
+        - Hook de 3 secondes au début du segment
         - Format vertical 9:16
         - Sous-titres animés TikTok
 
         Args:
-            video_path: Vidéo source
-            transcript: Transcription Whisper
+            video_path: Vidéo source complète
+            transcript: Transcription Whisper complète
             video_title: Titre
-            duree_segment: Durée du segment final
-            use_ai: Utiliser GPT-4 en plus de la détection locale
+            duree_segment: Durée du segment à extraire (secondes)
 
         Returns:
             str: Chemin vidéo finale optimisée
@@ -1312,45 +1312,68 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
         if moments_locaux:
             print(f"✅ {len(moments_locaux)} moments forts détectés")
-            for i, moment in enumerate(moments_locaux[:3], 1):
+            for i, moment in enumerate(moments_locaux[:5], 1):
                 print(f"   {i}. {self._format_time(moment['start'])} - Score {moment['score']:.1f} ({moment['reason']})")
-
-        # Étape 2 : Optionnellement combiner avec analyse IA
-        if use_ai and moments_locaux:
-            print("\n🎯 Combinaison avec analyse IA...")
-            # L'utilisateur peut choisir d'utiliser aussi GPT-4
-            # Pour l'instant on utilise juste la détection locale
-
-        # Étape 3 : Choisir le meilleur moment pour le hook
-        if moments_locaux:
-            meilleur_hook = moments_locaux[0]
-            hook_start = meilleur_hook['start']
-            hook_end = meilleur_hook['end']
-            print(f"\n🎣 Hook sélectionné : {self._format_time(hook_start)} ({meilleur_hook['reason']})")
         else:
-            # Pas de moment fort détecté, utiliser le début
-            hook_start = 0
-            hook_end = min(3, VideoFileClip(video_path).duration)
-            print("\n⚠️  Aucun moment fort détecté, utilisation du début comme hook")
+            print("⚠️  Aucun moment fort détecté, utilisation du début de la vidéo")
 
-        # Étape 4 : Extraire le segment principal (si moments détectés)
-        # Pour l'instant on garde la vidéo complète, mais on pourrait extraire un segment
-        segment_path = video_path
+        # Étape 2 : Déterminer le segment à extraire
+        if moments_locaux:
+            meilleur_moment = moments_locaux[0]
+            # Centrer le segment sur le moment fort
+            hook_center = (meilleur_moment['start'] + meilleur_moment['end']) / 2
+            segment_start = max(0, hook_center - duree_segment / 2)
+            segment_end = segment_start + duree_segment
 
-        # Étape 5 : Ajouter les sous-titres
-        print("\n📝 Ajout des sous-titres...")
-        video_subtitled = self.creer_video_tiktok(segment_path, transcript, f"{video_title}_temp")
+            # Vérifier qu'on ne dépasse pas la durée de la vidéo
+            from moviepy.editor import VideoFileClip
+            video_temp = VideoFileClip(video_path)
+            video_duration = video_temp.duration
+            video_temp.close()
 
-        # Étape 6 : Ajouter le hook au début
+            if segment_end > video_duration:
+                segment_end = video_duration
+                segment_start = max(0, video_duration - duree_segment)
+
+            print(f"\n📍 Segment viral sélectionné : {self._format_time(segment_start)} → {self._format_time(segment_end)}")
+            print(f"   Centré sur le meilleur moment ({meilleur_moment['reason']})")
+
+            # Position du hook DANS le segment
+            hook_start_in_segment = meilleur_moment['start'] - segment_start
+            hook_end_in_segment = meilleur_moment['end'] - segment_start
+        else:
+            # Pas de moment fort, prendre le début
+            segment_start = 0
+            segment_end = min(duree_segment, video_duration)
+            hook_start_in_segment = 0
+            hook_end_in_segment = 3
+
+        # Étape 3 : Extraire le segment viral
+        print(f"\n✂️  Extraction du segment ({segment_end - segment_start:.0f}s)...")
+        segment_path, transcript_segment = self.extraire_segment_fixe(
+            video_path,
+            transcript,
+            segment_start,
+            segment_end,
+            video_title,
+            mode="viral"
+        )
+
+        # Étape 4 : Ajouter les sous-titres sur le segment
+        print("\n📝 Ajout des sous-titres sur le segment...")
+        video_subtitled = self.creer_video_tiktok(segment_path, transcript_segment, f"{video_title}_temp")
+
+        # Étape 5 : Ajouter le hook au début du segment
+        print(f"\n🎣 Hook : {self._format_time(hook_start_in_segment)} → {self._format_time(hook_end_in_segment)} du segment")
         video_hook_path = self.output_dir / f"{video_title}_with_hook.mp4"
         video_with_hook = self.creer_video_avec_hook(
             video_subtitled,
-            hook_start,
-            hook_end,
+            hook_start_in_segment,
+            hook_end_in_segment,
             str(video_hook_path)
         )
 
-        # Étape 7 : Crop vertical 9:16
+        # Étape 6 : Crop vertical 9:16
         final_path = self.output_dir / f"{video_title}_optimized.mp4"
         video_final = self.crop_vertical_9_16(video_with_hook, str(final_path))
 
@@ -1359,6 +1382,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         print("=" * 70)
         print(f"📁 Fichier : {Path(video_final).name}")
         print(f"📊 Taille : {Path(video_final).stat().st_size / (1024*1024):.2f} MB")
+        print(f"⏱️  Durée : {segment_end - segment_start:.0f}s")
         print("\n🎉 Prête pour TikTok/YouTube Shorts !")
 
         return video_final
