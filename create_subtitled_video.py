@@ -8,6 +8,7 @@ import os
 import sys
 import re
 import json
+import random
 from pathlib import Path
 from dotenv import load_dotenv
 import yt_dlp
@@ -287,6 +288,131 @@ class YouTubeSubtitleGenerator:
             print(f"❌ Erreur lors de la transcription : {e}")
             sys.exit(1)
 
+    def extraire_segment_aleatoire(self, video_path, transcript, duree_souhaitee, video_title):
+        """
+        Extrait un segment aléatoire de la vidéo avec sa transcription
+
+        Args:
+            video_path (str): Chemin de la vidéo complète
+            transcript (dict): Transcription Whisper complète
+            duree_souhaitee (float): Durée souhaitée en secondes
+            video_title (str): Titre de la vidéo
+
+        Returns:
+            tuple: (chemin_segment_video, transcription_segment)
+        """
+        print("\n" + "=" * 70)
+        print("✂️  ÉTAPE 4/6 : EXTRACTION D'UN SEGMENT ALÉATOIRE")
+        print("=" * 70)
+
+        try:
+            # Charger la vidéo pour obtenir sa durée
+            video = VideoFileClip(video_path)
+            duree_totale = video.duration
+
+            # Vérifier que la durée souhaitée est valide
+            if duree_souhaitee > duree_totale:
+                print(f"⚠️  Durée souhaitée ({duree_souhaitee}s) > durée vidéo ({duree_totale:.1f}s)")
+                print(f"   Utilisation de la durée maximale : {duree_totale:.1f}s")
+                duree_souhaitee = duree_totale
+                debut = 0
+            else:
+                # Choisir un point de départ aléatoire
+                temps_max_debut = duree_totale - duree_souhaitee
+                debut = random.uniform(0, temps_max_debut)
+
+            fin = debut + duree_souhaitee
+
+            print(f"📊 Durée totale de la vidéo : {duree_totale:.1f}s")
+            print(f"✂️  Segment sélectionné : {debut:.1f}s → {fin:.1f}s (durée: {duree_souhaitee:.1f}s)")
+
+            # Extraire le segment vidéo
+            print("⏳ Extraction du segment vidéo...")
+            segment = video.subclip(debut, fin)
+
+            # Sauvegarder le segment
+            segment_dir = self.base_dir / "segments"
+            segment_dir.mkdir(parents=True, exist_ok=True)
+            segment_path = segment_dir / f"{video_title}_segment_{int(debut)}_{int(fin)}.mp4"
+
+            segment.write_videofile(
+                str(segment_path),
+                codec='libx264',
+                audio_codec='aac',
+                verbose=False,
+                logger='bar'
+            )
+
+            video.close()
+            segment.close()
+
+            # Filtrer la transcription pour ce segment
+            print("⏳ Filtrage de la transcription pour le segment...")
+            mots_filtres = []
+
+            if hasattr(transcript, 'words') and transcript.words:
+                for word in transcript.words:
+                    if debut <= word.start <= fin:
+                        # Ajuster les timestamps relatifs au segment
+                        mots_filtres.append({
+                            'word': word.word,
+                            'start': word.start - debut,
+                            'end': word.end - debut
+                        })
+
+            print(f"✅ Segment extrait : {len(mots_filtres)} mots dans le segment")
+            print(f"✅ Fichier : {segment_path.name}")
+
+            # Créer un objet transcription pour le segment
+            class TranscriptSegment:
+                def __init__(self, words_list):
+                    self.words = []
+                    for w in words_list:
+                        word_obj = type('obj', (object,), {
+                            'word': w['word'],
+                            'start': w['start'],
+                            'end': w['end']
+                        })
+                        self.words.append(word_obj)
+
+            transcript_segment = TranscriptSegment(mots_filtres)
+
+            return str(segment_path), transcript_segment
+
+        except Exception as e:
+            print(f"❌ Erreur lors de l'extraction du segment : {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+
+    def detecter_phrases(self, mots_timestamps):
+        """
+        Détecte les phrases dans la liste de mots basé sur la ponctuation
+
+        Args:
+            mots_timestamps (list): Liste des mots avec timestamps
+
+        Returns:
+            list: Liste de phrases (chaque phrase = liste de mots)
+        """
+        phrases = []
+        phrase_courante = []
+
+        for mot_info in mots_timestamps:
+            mot = mot_info['word'].strip()
+            phrase_courante.append(mot_info)
+
+            # Détecter la fin de phrase
+            if mot.endswith(('.', '!', '?', '...')) or mot in ['.', '!', '?']:
+                phrases.append(phrase_courante)
+                phrase_courante = []
+
+        # Ajouter la dernière phrase si elle n'est pas vide
+        if phrase_courante:
+            phrases.append(phrase_courante)
+
+        return phrases
+
     def creer_fonction_sous_titres(self, transcript):
         """
         Crée une fonction de génération de sous-titres pour moviepy
@@ -471,6 +597,194 @@ class YouTubeSubtitleGenerator:
             traceback.print_exc()
             sys.exit(1)
 
+    def creer_video_tiktok(self, video_path, transcript, video_title):
+        """
+        Crée une vidéo au format TikTok (9:16) avec sous-titres cumulatifs mot par mot
+
+        Args:
+            video_path (str): Chemin de la vidéo (segment)
+            transcript (dict): Transcription Whisper
+            video_title (str): Titre de la vidéo
+
+        Returns:
+            str: Chemin de la vidéo finale
+        """
+        print("\n" + "=" * 70)
+        print("📱 ÉTAPE 5/6 : CRÉATION VIDÉO FORMAT TIKTOK + SOUS-TITRES")
+        print("=" * 70)
+
+        # Générer un nom de fichier unique
+        output_base = self.output_dir / f"{video_title}_tiktok.mp4"
+        output_path = output_base
+        counter = 1
+        while output_path.exists():
+            output_path = self.output_dir / f"{video_title}_tiktok_{counter}.mp4"
+            counter += 1
+
+        if counter > 1:
+            print(f"ℹ️  Fichier existant détecté, création de : {output_path.name}")
+
+        try:
+            # Charger la vidéo
+            print("⏳ Chargement de la vidéo...")
+            video = VideoFileClip(video_path)
+
+            # Convertir au format vertical TikTok (9:16)
+            print("📱 Conversion au format vertical TikTok (9:16)...")
+            target_width = 1080
+            target_height = 1920
+
+            # Redimensionner la vidéo pour qu'elle tienne dans le format 9:16
+            scale = min(target_width / video.w, target_height / video.h)
+            new_w = int(video.w * scale)
+            new_h = int(video.h * scale)
+
+            from moviepy.editor import ColorClip
+            video_resized = video.resize((new_w, new_h))
+
+            # Créer un fond noir
+            background = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=video.duration)
+
+            # Centrer la vidéo sur le fond noir
+            x_center = (target_width - new_w) // 2
+            y_center = (target_height - new_h) // 2
+            video_centered = video_resized.set_position((x_center, y_center))
+
+            # Composer la vidéo avec le fond
+            video_final = CompositeVideoClip([background, video_centered], size=(target_width, target_height))
+
+            # Extraire les mots avec timestamps
+            if hasattr(transcript, 'words') and transcript.words:
+                mots_timestamps = [
+                    {
+                        'word': word.word,
+                        'start': word.start,
+                        'end': word.end
+                    }
+                    for word in transcript.words
+                ]
+            else:
+                mots_timestamps = []
+
+            # Détecter les phrases
+            print("📝 Détection des phrases...")
+            phrases = self.detecter_phrases(mots_timestamps)
+            print(f"✅ {len(phrases)} phrases détectées")
+
+            # Créer les sous-titres avec accumulation
+            print("⏳ Génération des sous-titres cumulatifs...")
+            subtitle_clips = []
+
+            def make_textclip_multiline(text_lines):
+                """Crée un clip avec plusieurs lignes de texte"""
+                if not text_lines:
+                    return None
+
+                width = target_width - 100  # Marges
+                line_height = 80
+                total_height = len(text_lines) * line_height + 100
+
+                img = Image.new('RGBA', (width, total_height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(img)
+
+                # Charger la police
+                try:
+                    font = ImageFont.truetype("arialbd.ttf", 70)
+                except:
+                    try:
+                        font = ImageFont.truetype("arial.ttf", 70)
+                    except:
+                        try:
+                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 70)
+                        except:
+                            font = ImageFont.load_default()
+
+                # Dessiner chaque ligne
+                y = 20
+                for line in text_lines:
+                    bbox = draw.textbbox((0, 0), line, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    x = (width - text_width) // 2
+
+                    # Contour noir
+                    for offset_x in range(-4, 5):
+                        for offset_y in range(-4, 5):
+                            draw.text((x + offset_x, y + offset_y), line, font=font, fill='black')
+
+                    # Texte blanc
+                    draw.text((x, y), line, font=font, fill='white')
+                    y += line_height
+
+                img_array = np.array(img)
+                return ImageClip(img_array)
+
+            # Générer les clips pour chaque phrase
+            for phrase_idx, phrase in enumerate(tqdm(phrases, desc="Phrases", unit="phrase")):
+                phrase_start = phrase[0]['start']
+                phrase_end = phrase[-1]['end']
+
+                # Pour chaque mot de la phrase, créer un clip cumulatif
+                for mot_idx, mot_info in enumerate(phrase):
+                    # Accumuler les mots jusqu'à ce mot
+                    mots_accumules = ' '.join([m['word'].strip().upper() for m in phrase[:mot_idx + 1]])
+
+                    # Diviser en lignes si trop long
+                    mots_liste = mots_accumules.split()
+                    lines = []
+                    current_line = []
+                    for mot in mots_liste:
+                        current_line.append(mot)
+                        if len(' '.join(current_line)) > 15:  # Max ~15 caractères par ligne
+                            lines.append(' '.join(current_line))
+                            current_line = []
+                    if current_line:
+                        lines.append(' '.join(current_line))
+
+                    txt_clip = make_textclip_multiline(lines)
+                    if txt_clip:
+                        txt_clip = txt_clip.set_start(mot_info['start']).set_end(mot_info['end'])
+                        # Position en bas de l'écran
+                        txt_clip = txt_clip.set_position(('center', target_height * 0.65))
+                        subtitle_clips.append(txt_clip)
+
+            # Composer la vidéo finale
+            print("⏳ Composition de la vidéo finale...")
+            final_video = CompositeVideoClip([video_final] + subtitle_clips, size=(target_width, target_height))
+
+            # Écrire la vidéo
+            print("\n" + "=" * 70)
+            print("🎬 ÉTAPE 6/6 : ENCODAGE DE LA VIDÉO FINALE")
+            print("=" * 70)
+            print("⏳ Écriture du fichier vidéo... (cela peut prendre plusieurs minutes)")
+            final_video.write_videofile(
+                str(output_path),
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                fps=30,
+                verbose=False,
+                logger='bar'
+            )
+
+            # Libérer les ressources
+            video.close()
+            video_resized.close()
+            background.close()
+            video_final.close()
+            final_video.close()
+
+            print(f"\n✅ Vidéo TikTok créée : {output_path.name}")
+            print(f"📱 Format : 1080x1920 (9:16)")
+            print(f"📊 Taille du fichier : {Path(output_path).stat().st_size / (1024*1024):.2f} MB")
+            return str(output_path)
+
+        except Exception as e:
+            print(f"❌ Erreur lors de la création de la vidéo TikTok : {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+
     def traiter_video(self, url=None, etape_depart=1, video_path=None, audio_path=None, transcript_path=None, video_title=None):
         """
         Pipeline complet ou partiel : téléchargement -> transcription -> sous-titres
@@ -556,11 +870,12 @@ def main():
         print("   2. Utiliser une vidéo existante (extraire l'audio)")
         print("   3. Utiliser un audio existant (transcrire)")
         print("   4. Utiliser une transcription existante (générer sous-titres)")
+        print("   5. 📱 CRÉER UNE VIDÉO TIKTOK (segment aléatoire + sous-titres cumulatifs)")
 
         # Forcer l'affichage du prompt
         sys.stdout.flush()
 
-        choix = input("\n👉 Votre choix (1-4) : ").strip()
+        choix = input("\n👉 Votre choix (1-5) : ").strip()
 
         if choix == "1":
             # Nouveau téléchargement
@@ -651,6 +966,56 @@ def main():
                 video_path = str(fichiers['videos'][idx_v])
 
             generator.traiter_video(etape_depart=4, video_path=video_path, transcript_path=transcript_path)
+
+        elif choix == "5":
+            # Créer une vidéo TikTok avec segment aléatoire
+            if not fichiers['videos']:
+                print("❌ Aucune vidéo trouvée. Lancez l'étape 1 ou 2 d'abord.")
+                sys.exit(1)
+
+            if not fichiers['transcripts']:
+                print("❌ Aucune transcription trouvée. Lancez l'étape 3 d'abord.")
+                sys.exit(1)
+
+            print("\n📹 VIDÉOS DISPONIBLES :")
+            for i, video in enumerate(fichiers['videos'], 1):
+                print(f"   {i}. {video.name}")
+
+            idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
+            video_path = str(fichiers['videos'][idx_v])
+            video_name = fichiers['videos'][idx_v].stem
+
+            print("\n📄 TRANSCRIPTIONS DISPONIBLES :")
+            for i, transcript in enumerate(fichiers['transcripts'], 1):
+                print(f"   {i}. {transcript.name}")
+
+            idx_t = int(input("\n👉 Choisissez une transcription : ").strip()) - 1
+            transcript_path = str(fichiers['transcripts'][idx_t])
+
+            # Charger la transcription
+            transcript = generator.charger_transcription(transcript_path)
+
+            # Demander la durée souhaitée
+            print("\n✂️  CONFIGURATION DU SEGMENT")
+            duree_str = input("👉 Durée souhaitée du segment (en secondes, ex: 30) : ").strip()
+            try:
+                duree_souhaitee = float(duree_str)
+                if duree_souhaitee <= 0:
+                    print("❌ La durée doit être positive")
+                    sys.exit(1)
+            except ValueError:
+                print("❌ Durée invalide")
+                sys.exit(1)
+
+            # Extraire le segment aléatoire
+            segment_path, transcript_segment = generator.extraire_segment_aleatoire(
+                video_path, transcript, duree_souhaitee, video_name
+            )
+
+            # Créer la vidéo TikTok
+            generator.creer_video_tiktok(segment_path, transcript_segment, video_name)
+
+            print("\n🎉 Processus terminé avec succès !")
 
         else:
             print("❌ Choix invalide")
