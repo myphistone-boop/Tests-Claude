@@ -1130,7 +1130,8 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
             if current_ratio > target_ratio:
                 # Vidéo trop large → crop horizontal
-                new_width = int(h * target_ratio)
+                # Arrondir au nombre pair (libx264 nécessite des dimensions paires)
+                new_width = (int(h * target_ratio) // 2) * 2
                 x_center = w // 2
                 x1 = x_center - new_width // 2
                 y1 = 0
@@ -1138,7 +1139,8 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 cropped = video.crop(x1=x1, y1=y1, width=new_width, height=h)
             else:
                 # Vidéo trop haute → crop vertical
-                new_height = int(w / target_ratio)
+                # Arrondir au nombre pair (libx264 nécessite des dimensions paires)
+                new_height = (int(w / target_ratio) // 2) * 2
                 y_center = h // 2
                 x1 = 0
                 y1 = y_center - new_height // 2
