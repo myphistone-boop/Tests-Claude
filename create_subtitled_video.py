@@ -671,6 +671,11 @@ class YouTubeSubtitleGenerator:
             phrases = self.detecter_phrases(mots_timestamps)
             print(f"✅ {len(phrases)} phrases détectées")
 
+            # Créer un dossier temporaire pour les images
+            import tempfile
+            temp_dir = Path(tempfile.mkdtemp(prefix="tiktok_subs_"))
+            print(f"📁 Dossier temporaire : {temp_dir}")
+
             # Créer les sous-titres avec accumulation
             print("⏳ Génération des sous-titres cumulatifs...")
             subtitle_clips = []
@@ -692,49 +697,13 @@ class YouTubeSubtitleGenerator:
                         font = ImageFont.load_default()
                         print("✅ Police par défaut chargée")
 
-            def make_textclip_multiline(text_lines):
-                """Crée un clip avec plusieurs lignes de texte"""
-                if not text_lines:
-                    return None
-
-                try:
-                    width = target_width - 100  # Marges
-                    line_height = 80
-                    total_height = len(text_lines) * line_height + 100
-
-                    img = Image.new('RGBA', (width, total_height), (0, 0, 0, 0))
-                    draw = ImageDraw.Draw(img)
-
-                    # Dessiner chaque ligne
-                    y = 20
-                    for line in text_lines:
-                        bbox = draw.textbbox((0, 0), line, font=font)
-                        text_width = bbox[2] - bbox[0]
-                        x = (width - text_width) // 2
-
-                        # Contour noir simplifié pour performance
-                        for offset_x in range(-3, 4):
-                            for offset_y in range(-3, 4):
-                                if offset_x != 0 or offset_y != 0:
-                                    draw.text((x + offset_x, y + offset_y), line, font=font, fill='black')
-
-                        # Texte blanc
-                        draw.text((x, y), line, font=font, fill='white')
-                        y += line_height
-
-                    img_array = np.array(img)
-                    return ImageClip(img_array)
-                except Exception as e:
-                    print(f"\n⚠️  Erreur création image texte: {e}")
-                    return None
-
             # Générer les clips pour chaque phrase
             print(f"\n⏳ Traitement de {len(phrases)} phrase(s)...")
+            image_counter = 0
+
             for phrase_idx, phrase in enumerate(phrases):
                 try:
                     print(f"\n📝 Phrase {phrase_idx + 1}/{len(phrases)} - {len(phrase)} mots")
-                    phrase_start = phrase[0]['start']
-                    phrase_end = phrase[-1]['end']
 
                     # Pour chaque mot de la phrase, créer un clip cumulatif
                     for mot_idx, mot_info in enumerate(phrase):
@@ -748,54 +717,67 @@ class YouTubeSubtitleGenerator:
                             current_line = []
                             for mot in mots_liste:
                                 current_line.append(mot)
-                                if len(' '.join(current_line)) > 15:  # Max ~15 caractères par ligne
+                                if len(' '.join(current_line)) > 15:
                                     lines.append(' '.join(current_line))
                                     current_line = []
                             if current_line:
                                 lines.append(' '.join(current_line))
 
-                            print(f"  Mot {mot_idx + 1}/{len(phrase)}: '{mot_info['word']}' → Création image...", end=' ')
-                            sys.stdout.flush()
+                            # Créer l'image de texte
+                            width = target_width - 100
+                            line_height = 80
+                            total_height = len(lines) * line_height + 100
 
-                            txt_clip = make_textclip_multiline(lines)
-                            print("Image créée...", end=' ')
-                            sys.stdout.flush()
+                            img = Image.new('RGBA', (width, total_height), (0, 0, 0, 0))
+                            draw = ImageDraw.Draw(img)
 
-                            if txt_clip:
-                                # Définir la durée du clip
-                                duree = mot_info['end'] - mot_info['start']
-                                print(f"durée={duree:.2f}s...", end=' ')
-                                sys.stdout.flush()
+                            # Dessiner chaque ligne
+                            y = 20
+                            for line in lines:
+                                bbox = draw.textbbox((0, 0), line, font=font)
+                                text_width = bbox[2] - bbox[0]
+                                x = (width - text_width) // 2
 
-                                txt_clip = txt_clip.set_duration(duree)
-                                print("durée OK...", end=' ')
-                                sys.stdout.flush()
+                                # Contour noir
+                                for offset_x in range(-3, 4):
+                                    for offset_y in range(-3, 4):
+                                        if offset_x != 0 or offset_y != 0:
+                                            draw.text((x + offset_x, y + offset_y), line, font=font, fill='black')
 
-                                txt_clip = txt_clip.set_start(mot_info['start'])
-                                print("start OK...", end=' ')
-                                sys.stdout.flush()
+                                # Texte blanc
+                                draw.text((x, y), line, font=font, fill='white')
+                                y += line_height
 
-                                # Position en bas de l'écran
-                                txt_clip = txt_clip.set_position(('center', target_height * 0.65))
-                                print("position OK...", end=' ')
-                                sys.stdout.flush()
+                            # Sauvegarder l'image comme fichier PNG temporaire
+                            image_path = temp_dir / f"sub_{image_counter:04d}.png"
+                            img.save(str(image_path))
+                            image_counter += 1
 
-                                subtitle_clips.append(txt_clip)
-                                print("✅")
-                            else:
-                                print("❌ (clip vide)")
+                            # Créer ImageClip depuis le fichier
+                            duree = mot_info['end'] - mot_info['start']
+                            txt_clip = ImageClip(str(image_path), duration=duree)
+                            txt_clip = txt_clip.set_start(mot_info['start'])
+                            txt_clip = txt_clip.set_position(('center', target_height * 0.65))
+                            subtitle_clips.append(txt_clip)
+
+                            if (mot_idx + 1) % 5 == 0:
+                                print(f"  {mot_idx + 1}/{len(phrase)} mots traités...")
+
                         except Exception as e:
                             print(f"\n⚠️  Erreur sur le mot '{mot_info['word']}': {e}")
                             import traceback
                             traceback.print_exc()
                             continue
+
+                    print(f"✅ Phrase {phrase_idx + 1} terminée")
+
                 except Exception as e:
                     print(f"\n⚠️  Erreur sur la phrase {phrase_idx + 1}: {e}")
                     import traceback
                     traceback.print_exc()
                     continue
 
-            print(f"\n✅ {len(subtitle_clips)} clips de sous-titres créés")
+            print(f"\n✅ {len(subtitle_clips)} clips de sous-titres créés ({image_counter} images générées)")
 
             # Composer la vidéo finale
             print("⏳ Composition de la vidéo finale...")
@@ -824,6 +806,15 @@ class YouTubeSubtitleGenerator:
             video_final.close()
             final_video.close()
 
+            # Nettoyer les fichiers temporaires
+            print("⏳ Nettoyage des fichiers temporaires...")
+            import shutil
+            try:
+                shutil.rmtree(temp_dir)
+                print("✅ Fichiers temporaires supprimés")
+            except Exception as e:
+                print(f"⚠️  Impossible de supprimer les fichiers temporaires: {e}")
+
             print(f"\n✅ Vidéo TikTok créée : {output_path.name}")
             print(f"📱 Format : 1080x1920 (9:16)")
             print(f"📊 Taille du fichier : {Path(output_path).stat().st_size / (1024*1024):.2f} MB")
@@ -833,6 +824,14 @@ class YouTubeSubtitleGenerator:
             print(f"❌ Erreur lors de la création de la vidéo TikTok : {e}")
             import traceback
             traceback.print_exc()
+
+            # Nettoyer les fichiers temporaires même en cas d'erreur
+            try:
+                import shutil
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+
             sys.exit(1)
 
     def traiter_video(self, url=None, etape_depart=1, video_path=None, audio_path=None, transcript_path=None, video_title=None):
