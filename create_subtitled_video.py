@@ -354,6 +354,16 @@ class YouTubeSubtitleGenerator:
             print(f"✅ Segment extrait : {len(mots_filtres)} mots dans le segment")
             print(f"✅ Fichier : {segment_path.name}")
 
+            # Vérifier si le segment contient des mots
+            if len(mots_filtres) == 0:
+                print("\n⚠️  ATTENTION : Ce segment ne contient aucune parole !")
+                print("   Il s'agit probablement de musique instrumentale ou de silence.")
+                print("   Les sous-titres ne pourront pas être générés pour ce segment.")
+                choix = input("\n👉 Voulez-vous continuer quand même ? (o/n) : ").strip().lower()
+                if choix != 'o':
+                    print("❌ Extraction annulée. Veuillez choisir un autre segment.")
+                    sys.exit(1)
+
             # Créer un objet transcription pour le segment
             class TranscriptSegment:
                 def __init__(self, words_list):
@@ -732,7 +742,7 @@ class YouTubeSubtitleGenerator:
         print("=" * 70)
 
         # Vérifier si l'analyse existe déjà
-        analysis_path = self.base_dir / f"{video_title}_viral_analysis.json"
+        analysis_path = self.base_dir / f"{video_title}_viral_analysis_{nb_segments}seg.json"
 
         if analysis_path.exists():
             print(f"📂 Analyse existante trouvée : {analysis_path.name}")
@@ -898,13 +908,16 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         print(f"[Q] ❌ Quitter")
 
         # Demander le choix
-        choix = input(f"\n👉 Votre choix (1-{nb_segments}, R, Q) : ").strip().upper()
+        choix = input(f"\n👉 Votre choix (1-{nb_segments}, R, Q, Entrée=R) : ").strip().upper()
 
-        if choix == 'Q':
+        # Entrée vide = mode aléatoire par défaut
+        if choix == '' or choix == 'R':
+            if choix == '':
+                print("ℹ️  Entrée vide détectée → Mode aléatoire activé")
+            return None  # Mode aléatoire
+        elif choix == 'Q':
             print("👋 Au revoir !")
             sys.exit(0)
-        elif choix == 'R':
-            return None  # Mode aléatoire
         else:
             try:
                 idx = int(choix) - 1
@@ -963,8 +976,16 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                     for word in transcript.words
                 ]
             else:
-                print("❌ Pas de mots avec timestamps dans la transcription")
-                sys.exit(1)
+                mots_timestamps = []
+
+            # Si pas de mots, retourner la vidéo originale sans sous-titres
+            if len(mots_timestamps) == 0:
+                print("⚠️  Aucun mot à sous-titrer - copie de la vidéo sans sous-titres")
+                import shutil
+                shutil.copy2(video_path, output_path)
+                print(f"\n✅ Vidéo copiée (sans sous-titres) : {output_path.name}")
+                print(f"📊 Taille du fichier : {Path(output_path).stat().st_size / (1024*1024):.2f} MB")
+                return str(output_path)
 
             print(f"📝 {len(mots_timestamps)} mots à sous-titrer")
 
