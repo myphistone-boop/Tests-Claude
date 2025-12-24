@@ -288,43 +288,34 @@ class YouTubeSubtitleGenerator:
             print(f"❌ Erreur lors de la transcription : {e}")
             sys.exit(1)
 
-    def extraire_segment_aleatoire(self, video_path, transcript, duree_souhaitee, video_title):
+    def extraire_segment_fixe(self, video_path, transcript, debut, fin, video_title, mode="viral"):
         """
-        Extrait un segment aléatoire de la vidéo avec sa transcription
+        Extrait un segment spécifique de la vidéo avec sa transcription
 
         Args:
             video_path (str): Chemin de la vidéo complète
             transcript (dict): Transcription Whisper complète
-            duree_souhaitee (float): Durée souhaitée en secondes
+            debut (float): Timestamp de début en secondes
+            fin (float): Timestamp de fin en secondes
             video_title (str): Titre de la vidéo
+            mode (str): "viral" ou "aleatoire"
 
         Returns:
             tuple: (chemin_segment_video, transcription_segment)
         """
+        mode_label = "SEGMENT VIRAL" if mode == "viral" else "SEGMENT ALÉATOIRE"
         print("\n" + "=" * 70)
-        print("✂️  ÉTAPE 4/6 : EXTRACTION D'UN SEGMENT ALÉATOIRE")
+        print(f"✂️  ÉTAPE 5/7 : EXTRACTION DU {mode_label}")
         print("=" * 70)
 
         try:
             # Charger la vidéo pour obtenir sa durée
             video = VideoFileClip(video_path)
             duree_totale = video.duration
-
-            # Vérifier que la durée souhaitée est valide
-            if duree_souhaitee > duree_totale:
-                print(f"⚠️  Durée souhaitée ({duree_souhaitee}s) > durée vidéo ({duree_totale:.1f}s)")
-                print(f"   Utilisation de la durée maximale : {duree_totale:.1f}s")
-                duree_souhaitee = duree_totale
-                debut = 0
-            else:
-                # Choisir un point de départ aléatoire
-                temps_max_debut = duree_totale - duree_souhaitee
-                debut = random.uniform(0, temps_max_debut)
-
-            fin = debut + duree_souhaitee
+            duree_segment = fin - debut
 
             print(f"📊 Durée totale de la vidéo : {duree_totale:.1f}s")
-            print(f"✂️  Segment sélectionné : {debut:.1f}s → {fin:.1f}s (durée: {duree_souhaitee:.1f}s)")
+            print(f"✂️  Segment sélectionné : {debut:.1f}s → {fin:.1f}s (durée: {duree_segment:.1f}s)")
 
             # Extraire le segment vidéo
             print("⏳ Extraction du segment vidéo...")
@@ -384,6 +375,40 @@ class YouTubeSubtitleGenerator:
             import traceback
             traceback.print_exc()
             sys.exit(1)
+
+    def extraire_segment_aleatoire(self, video_path, transcript, duree_souhaitee, video_title):
+        """
+        Extrait un segment aléatoire de la vidéo avec sa transcription
+
+        Args:
+            video_path (str): Chemin de la vidéo complète
+            transcript (dict): Transcription Whisper complète
+            duree_souhaitee (float): Durée souhaitée en secondes
+            video_title (str): Titre de la vidéo
+
+        Returns:
+            tuple: (chemin_segment_video, transcription_segment)
+        """
+        # Charger la vidéo pour obtenir sa durée
+        video = VideoFileClip(video_path)
+        duree_totale = video.duration
+        video.close()
+
+        # Vérifier que la durée souhaitée est valide
+        if duree_souhaitee > duree_totale:
+            print(f"⚠️  Durée souhaitée ({duree_souhaitee}s) > durée vidéo ({duree_totale:.1f}s)")
+            print(f"   Utilisation de la durée maximale : {duree_totale:.1f}s")
+            duree_souhaitee = duree_totale
+            debut = 0
+        else:
+            # Choisir un point de départ aléatoire
+            temps_max_debut = duree_totale - duree_souhaitee
+            debut = random.uniform(0, temps_max_debut)
+
+        fin = debut + duree_souhaitee
+
+        # Utiliser la méthode générique d'extraction
+        return self.extraire_segment_fixe(video_path, transcript, debut, fin, video_title, mode="aleatoire")
 
     def detecter_phrases(self, mots_timestamps):
         """
@@ -689,6 +714,214 @@ class YouTubeSubtitleGenerator:
                     # Écrire l'événement
                     f.write(f"Dialogue: 0,{self.format_timestamp_ass(mot_start)},{self.format_timestamp_ass(mot_end)},Default,,0,0,0,,{style_code}{texte_groupe}\n")
 
+    def analyser_moments_viraux(self, transcript, video_title, duree_cible=60):
+        """
+        Analyse la transcription pour identifier les moments viraux potentiels
+
+        Args:
+            transcript (dict): Transcription Whisper avec mots et timestamps
+            video_title (str): Titre de la vidéo
+            duree_cible (float): Durée cible des segments en secondes
+
+        Returns:
+            dict: Analyse avec segments viraux triés par score
+        """
+        print("\n" + "=" * 70)
+        print("🎯 ANALYSE IA DES MOMENTS VIRAUX (GPT-4-mini)")
+        print("=" * 70)
+
+        # Vérifier si l'analyse existe déjà
+        analysis_path = self.base_dir / f"{video_title}_viral_analysis.json"
+
+        if analysis_path.exists():
+            print(f"📂 Analyse existante trouvée : {analysis_path.name}")
+            choix = input("👉 Réutiliser l'analyse existante ? (o/n) : ").strip().lower()
+            if choix == 'o' or choix == '':
+                with open(analysis_path, 'r', encoding='utf-8') as f:
+                    analysis = json.load(f)
+                print(f"✅ Analyse chargée (coût API précédent : ${analysis.get('analysis_cost', 0):.4f})")
+                return analysis
+
+        # Préparer le texte complet avec timestamps
+        if hasattr(transcript, 'words') and transcript.words:
+            mots_timestamps = [
+                {
+                    'word': word.word,
+                    'start': word.start,
+                    'end': word.end
+                }
+                for word in transcript.words
+            ]
+        else:
+            print("❌ Pas de mots avec timestamps dans la transcription")
+            sys.exit(1)
+
+        # Créer le texte avec marqueurs de temps toutes les 10 secondes
+        texte_avec_temps = []
+        dernier_timestamp = 0
+        texte_buffer = []
+
+        for mot in mots_timestamps:
+            if mot['start'] - dernier_timestamp >= 10:
+                if texte_buffer:
+                    texte_avec_temps.append(f"[{int(dernier_timestamp)}s] {' '.join(texte_buffer)}")
+                    texte_buffer = []
+                dernier_timestamp = mot['start']
+            texte_buffer.append(mot['word'].strip())
+
+        if texte_buffer:
+            texte_avec_temps.append(f"[{int(dernier_timestamp)}s] {' '.join(texte_buffer)}")
+
+        transcription_complete = '\n'.join(texte_avec_temps)
+
+        # Prompt optimisé pour détecter les moments viraux TikTok
+        prompt = f"""Analyse cette transcription de vidéo YouTube et identifie les 5 segments de {int(duree_cible)}-90 secondes avec le PLUS HAUT POTENTIEL VIRAL pour TikTok.
+
+CRITÈRES DE VIRALITÉ TIKTOK :
+1. **Hook puissant** : Phrase choc/question intrigante dans les 3 premières secondes
+2. **Punchline** : Déclaration contre-intuitive, révélation surprenante
+3. **Conseil actionnable** : Astuce immédiatement applicable
+4. **Histoire courte** : Début/milieu/fin en 60-90 sec
+5. **Émotion forte** : Surprise, colère, rire, inspiration
+6. **Quotable** : Phrase mémorable et partageable
+7. **Standalone** : Compréhensible sans contexte de la vidéo complète
+
+TRANSCRIPTION :
+{transcription_complete}
+
+Réponds UNIQUEMENT avec un JSON valide (pas de markdown, pas de ```json) dans ce format exact :
+{{
+  "segments": [
+    {{
+      "rank": 1,
+      "start_time": 125.0,
+      "end_time": 185.0,
+      "duration": 60.0,
+      "viral_score": 9.5,
+      "hook": "La phrase d'accroche des 3 premières secondes",
+      "reason": "Pourquoi ce segment est viral (2-3 critères)",
+      "category": "Conseil choc / Punchline / Histoire / Révélation"
+    }}
+  ]
+}}
+
+Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcription."""
+
+        try:
+            print("⏳ Envoi à GPT-4-mini pour analyse...")
+            print(f"📊 Longueur transcription : {len(transcription_complete)} caractères")
+
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu es un expert en contenu viral TikTok. Tu analyses des transcriptions pour trouver les segments avec le plus haut potentiel viral. Tu réponds UNIQUEMENT en JSON valide."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=2000
+            )
+
+            # Calculer le coût (GPT-4-mini : $0.150/1M input, $0.600/1M output)
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = (input_tokens / 1_000_000 * 0.150) + (output_tokens / 1_000_000 * 0.600)
+
+            print(f"✅ Analyse terminée")
+            print(f"💰 Coût API : ${cost:.4f} ({input_tokens} tokens in, {output_tokens} tokens out)")
+
+            # Parser la réponse JSON
+            response_text = response.choices[0].message.content.strip()
+
+            # Nettoyer si l'IA a ajouté des backticks markdown
+            if response_text.startswith('```'):
+                response_text = response_text.split('```')[1]
+                if response_text.startswith('json'):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
+
+            analysis = json.loads(response_text)
+            analysis['analysis_cost'] = cost
+            analysis['analyzed_at'] = str(Path(analysis_path).stat().st_mtime) if analysis_path.exists() else "now"
+
+            # Sauvegarder l'analyse
+            with open(analysis_path, 'w', encoding='utf-8') as f:
+                json.dump(analysis, f, indent=2, ensure_ascii=False)
+
+            print(f"💾 Analyse sauvegardée : {analysis_path.name}")
+
+            return analysis
+
+        except json.JSONDecodeError as e:
+            print(f"❌ Erreur de parsing JSON : {e}")
+            print(f"Réponse brute :\n{response_text}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ Erreur lors de l'analyse : {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+
+    def choisir_segment_viral(self, analysis, transcript, duree_souhaitee):
+        """
+        Affiche le menu des segments viraux et retourne le choix de l'utilisateur
+
+        Args:
+            analysis (dict): Analyse des moments viraux
+            transcript (dict): Transcription complète
+            duree_souhaitee (float): Durée souhaitée du segment
+
+        Returns:
+            tuple: (start_time, end_time, is_random) ou None si aléatoire choisi
+        """
+        print("\n" + "=" * 70)
+        print("🎯 TOP 5 MOMENTS VIRAUX DÉTECTÉS")
+        print("=" * 70)
+
+        segments = analysis.get('segments', [])
+
+        if not segments:
+            print("⚠️  Aucun segment viral détecté, passage en mode aléatoire")
+            return None
+
+        # Afficher les segments
+        for i, segment in enumerate(segments[:5], 1):
+            print(f"\n[{i}] ⭐ {segment.get('viral_score', 0)}/10 - "
+                  f"{self._format_time(segment['start_time'])} → {self._format_time(segment['end_time'])} "
+                  f"({int(segment['duration'])}s)")
+            print(f"    💡 Hook : \"{segment.get('hook', 'N/A')}\"")
+            print(f"    📌 Raison : {segment.get('reason', 'N/A')}")
+            print(f"    🏷️  Catégorie : {segment.get('category', 'N/A')}")
+
+        print(f"\n[R] 🎲 Segment ALÉATOIRE ({int(duree_souhaitee)}s) - comme avant")
+        print(f"[Q] ❌ Quitter")
+
+        # Demander le choix
+        choix = input("\n👉 Votre choix (1-5, R, Q) : ").strip().upper()
+
+        if choix == 'Q':
+            print("👋 Au revoir !")
+            sys.exit(0)
+        elif choix == 'R':
+            return None  # Mode aléatoire
+        else:
+            try:
+                idx = int(choix) - 1
+                if 0 <= idx < len(segments):
+                    segment = segments[idx]
+                    return (segment['start_time'], segment['end_time'], False)
+                else:
+                    print("⚠️  Choix invalide, mode aléatoire activé")
+                    return None
+            except ValueError:
+                print("⚠️  Choix invalide, mode aléatoire activé")
+                return None
+
+    def _format_time(self, seconds):
+        """Formate les secondes en MM:SS"""
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}:{secs:02d}"
+
     def creer_video_tiktok(self, video_path, transcript, video_title):
         """
         Crée une vidéo avec sous-titres mot par mot (SIMPLE)
@@ -989,7 +1222,7 @@ def main():
 
             # Demander la durée souhaitée
             print("\n✂️  CONFIGURATION DU SEGMENT")
-            duree_str = input("👉 Durée souhaitée du segment (en secondes, ex: 30) : ").strip()
+            duree_str = input("👉 Durée souhaitée du segment (en secondes, ex: 60) : ").strip()
             try:
                 duree_souhaitee = float(duree_str)
                 if duree_souhaitee <= 0:
@@ -999,12 +1232,28 @@ def main():
                 print("❌ Durée invalide")
                 sys.exit(1)
 
-            # Extraire le segment aléatoire
-            segment_path, transcript_segment = generator.extraire_segment_aleatoire(
-                video_path, transcript, duree_souhaitee, video_name
-            )
+            # PHASE 4 : Analyser les moments viraux avec GPT-4-mini
+            analysis = generator.analyser_moments_viraux(transcript, video_name, duree_cible=duree_souhaitee)
 
-            # Créer la vidéo TikTok
+            # PHASE 4.5 : Choisir le segment (viral ou aléatoire)
+            choix_segment = generator.choisir_segment_viral(analysis, transcript, duree_souhaitee)
+
+            # PHASE 5 : Extraire le segment choisi
+            if choix_segment is None:
+                # Mode aléatoire
+                print("\n🎲 Mode aléatoire sélectionné")
+                segment_path, transcript_segment = generator.extraire_segment_aleatoire(
+                    video_path, transcript, duree_souhaitee, video_name
+                )
+            else:
+                # Mode viral - segment spécifique
+                debut, fin, _ = choix_segment
+                print(f"\n⭐ Segment viral sélectionné : {generator._format_time(debut)} → {generator._format_time(fin)}")
+                segment_path, transcript_segment = generator.extraire_segment_fixe(
+                    video_path, transcript, debut, fin, video_name, mode="viral"
+                )
+
+            # PHASE 6 : Créer la vidéo TikTok avec sous-titres animés
             generator.creer_video_tiktok(segment_path, transcript_segment, video_name)
 
             print("\n🎉 Processus terminé avec succès !")
