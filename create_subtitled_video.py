@@ -984,6 +984,10 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             fin_reel = mots_fenetre[-1].end
             duree_reel = fin_reel - debut
 
+            # Vérifier que la durée est valide (éviter division par zéro)
+            if duree_reel <= 0:
+                continue
+
             # Calculer le score
             score = 0
             raisons = []
