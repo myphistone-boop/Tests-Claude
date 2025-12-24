@@ -531,6 +531,12 @@ class YouTubeSubtitleGenerator:
 def main():
     """Fonction principale"""
     try:
+        # Vérifier que stdin est disponible
+        if not sys.stdin or not hasattr(sys.stdin, 'isatty'):
+            print("❌ Erreur : stdin n'est pas disponible")
+            print("   Le script doit être lancé dans un terminal interactif")
+            sys.exit(1)
+
         generator = YouTubeSubtitleGenerator()
 
         print("\n" + "=" * 70)
@@ -550,6 +556,9 @@ def main():
         print("   2. Utiliser une vidéo existante (extraire l'audio)")
         print("   3. Utiliser un audio existant (transcrire)")
         print("   4. Utiliser une transcription existante (générer sous-titres)")
+
+        # Forcer l'affichage du prompt
+        sys.stdout.flush()
 
         choix = input("\n👉 Votre choix (1-4) : ").strip()
 
@@ -648,7 +657,12 @@ def main():
             sys.exit(1)
 
     except KeyboardInterrupt:
-        print("\n\n⚠️  Processus interrompu par l'utilisateur")
+        print("\n\n⚠️  Processus interrompu par l'utilisateur (Ctrl+C)")
+        sys.exit(1)
+    except EOFError:
+        print("\n\n❌ Erreur : Impossible de lire l'entrée utilisateur")
+        print("   Assurez-vous que le script est lancé dans un terminal interactif")
+        print("   et non en arrière-plan ou avec stdin redirigé.")
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Erreur fatale : {e}")
