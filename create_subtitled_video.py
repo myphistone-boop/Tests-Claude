@@ -1083,8 +1083,8 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             transcript = self.charger_transcription(transcript_path)
             print(f"✅ Transcription chargée : {Path(transcript_path).name}")
 
-        # Étape 4 : Créer la vidéo avec sous-titres
-        output_path = self.creer_video_sous_titree(video_path, transcript, video_title)
+        # Étape 4 : Créer la vidéo avec sous-titres (méthode rapide)
+        output_path = self.creer_video_tiktok(video_path, transcript, video_title)
 
         # Étape 5 : Résumé final
         print("\n" + "=" * 70)
