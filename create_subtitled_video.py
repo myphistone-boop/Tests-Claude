@@ -1069,17 +1069,22 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             # Créer une transition flash blanc (0.2s)
             print("   ⚡ Création de la transition flash...")
             flash = ColorClip(size=video.size, color=(255, 255, 255), duration=0.2)
+            # Ajouter l'audio de la vidéo au flash pour éviter les problèmes d'encodage
+            if video.audio:
+                flash = flash.set_audio(video.audio.subclip(hook_start, min(hook_start + 0.2, video.duration)))
 
             # Assembler: Hook → Flash → Vidéo complète
             print("   🔨 Assemblage : [Hook] → [Flash] → [Vidéo]...")
             final = concatenate_videoclips([hook, flash, video], method="compose")
 
-            # Sauvegarder
+            # Sauvegarder avec paramètres d'encodage compatibles
             print("\n📊 Progression de l'encodage :")
             final.write_videofile(
                 output_path,
                 codec='libx264',
                 audio_codec='aac',
+                preset='medium',
+                ffmpeg_params=['-pix_fmt', 'yuv420p'],
                 verbose=False,
                 logger='bar'
             )
@@ -1140,12 +1145,14 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 print(f"   ✂️  Crop vertical : {w}x{new_height} (centré)")
                 cropped = video.crop(x1=x1, y1=y1, width=w, height=new_height)
 
-            # Sauvegarder
+            # Sauvegarder avec paramètres d'encodage compatibles
             print("\n📊 Progression de l'encodage :")
             cropped.write_videofile(
                 output_path,
                 codec='libx264',
                 audio_codec='aac',
+                preset='medium',
+                ffmpeg_params=['-pix_fmt', 'yuv420p'],
                 verbose=False,
                 logger='bar'
             )
