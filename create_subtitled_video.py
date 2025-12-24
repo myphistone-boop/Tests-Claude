@@ -343,12 +343,17 @@ class YouTubeSubtitleGenerator:
 
             if hasattr(transcript, 'words') and transcript.words:
                 for word in transcript.words:
-                    if debut <= word.start <= fin:
+                    # Inclure les mots qui se chevauchent avec le segment
+                    # (commence avant la fin ET se termine après le début)
+                    if word.start < fin and word.end > debut:
                         # Ajuster les timestamps relatifs au segment
+                        word_start = max(0, word.start - debut)
+                        word_end = min(fin - debut, word.end - debut)
+
                         mots_filtres.append({
                             'word': word.word,
-                            'start': word.start - debut,
-                            'end': word.end - debut
+                            'start': word_start,
+                            'end': word_end
                         })
 
             print(f"✅ Segment extrait : {len(mots_filtres)} mots dans le segment")
