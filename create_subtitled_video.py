@@ -755,14 +755,31 @@ class YouTubeSubtitleGenerator:
                                 lines.append(' '.join(current_line))
 
                             print(f"  Mot {mot_idx + 1}/{len(phrase)}: '{mot_info['word']}' → Création image...", end=' ')
+                            sys.stdout.flush()
+
                             txt_clip = make_textclip_multiline(lines)
+                            print("Image créée...", end=' ')
+                            sys.stdout.flush()
+
                             if txt_clip:
                                 # Définir la durée du clip
                                 duree = mot_info['end'] - mot_info['start']
+                                print(f"durée={duree:.2f}s...", end=' ')
+                                sys.stdout.flush()
+
                                 txt_clip = txt_clip.set_duration(duree)
+                                print("durée OK...", end=' ')
+                                sys.stdout.flush()
+
                                 txt_clip = txt_clip.set_start(mot_info['start'])
+                                print("start OK...", end=' ')
+                                sys.stdout.flush()
+
                                 # Position en bas de l'écran
                                 txt_clip = txt_clip.set_position(('center', target_height * 0.65))
+                                print("position OK...", end=' ')
+                                sys.stdout.flush()
+
                                 subtitle_clips.append(txt_clip)
                                 print("✅")
                             else:
