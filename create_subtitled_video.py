@@ -720,32 +720,45 @@ class YouTubeSubtitleGenerator:
 
             # Générer les clips pour chaque phrase
             for phrase_idx, phrase in enumerate(tqdm(phrases, desc="Phrases", unit="phrase")):
-                phrase_start = phrase[0]['start']
-                phrase_end = phrase[-1]['end']
+                try:
+                    phrase_start = phrase[0]['start']
+                    phrase_end = phrase[-1]['end']
 
-                # Pour chaque mot de la phrase, créer un clip cumulatif
-                for mot_idx, mot_info in enumerate(phrase):
-                    # Accumuler les mots jusqu'à ce mot
-                    mots_accumules = ' '.join([m['word'].strip().upper() for m in phrase[:mot_idx + 1]])
+                    # Pour chaque mot de la phrase, créer un clip cumulatif
+                    for mot_idx, mot_info in enumerate(phrase):
+                        try:
+                            # Accumuler les mots jusqu'à ce mot
+                            mots_accumules = ' '.join([m['word'].strip().upper() for m in phrase[:mot_idx + 1]])
 
-                    # Diviser en lignes si trop long
-                    mots_liste = mots_accumules.split()
-                    lines = []
-                    current_line = []
-                    for mot in mots_liste:
-                        current_line.append(mot)
-                        if len(' '.join(current_line)) > 15:  # Max ~15 caractères par ligne
-                            lines.append(' '.join(current_line))
+                            # Diviser en lignes si trop long
+                            mots_liste = mots_accumules.split()
+                            lines = []
                             current_line = []
-                    if current_line:
-                        lines.append(' '.join(current_line))
+                            for mot in mots_liste:
+                                current_line.append(mot)
+                                if len(' '.join(current_line)) > 15:  # Max ~15 caractères par ligne
+                                    lines.append(' '.join(current_line))
+                                    current_line = []
+                            if current_line:
+                                lines.append(' '.join(current_line))
 
-                    txt_clip = make_textclip_multiline(lines)
-                    if txt_clip:
-                        txt_clip = txt_clip.set_start(mot_info['start']).set_end(mot_info['end'])
-                        # Position en bas de l'écran
-                        txt_clip = txt_clip.set_position(('center', target_height * 0.65))
-                        subtitle_clips.append(txt_clip)
+                            txt_clip = make_textclip_multiline(lines)
+                            if txt_clip:
+                                # Définir la durée du clip
+                                duree = mot_info['end'] - mot_info['start']
+                                txt_clip = txt_clip.set_duration(duree)
+                                txt_clip = txt_clip.set_start(mot_info['start'])
+                                # Position en bas de l'écran
+                                txt_clip = txt_clip.set_position(('center', target_height * 0.65))
+                                subtitle_clips.append(txt_clip)
+                        except Exception as e:
+                            print(f"\n⚠️  Erreur sur le mot '{mot_info['word']}': {e}")
+                            continue
+                except Exception as e:
+                    print(f"\n⚠️  Erreur sur la phrase {phrase_idx + 1}: {e}")
+                    continue
+
+            print(f"\n✅ {len(subtitle_clips)} clips de sous-titres créés")
 
             # Composer la vidéo finale
             print("⏳ Composition de la vidéo finale...")
