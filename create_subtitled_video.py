@@ -1397,7 +1397,8 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
             # Si on reçoit un VideoClip, le sauvegarder temporairement
             if not isinstance(video_path_or_clip, str):
-                print("   💾 Sauvegarde temporaire du clip...")
+                print("   💾 Sauvegarde temporaire du clip (pour FFmpeg)...")
+                print("   💡 Preset ultrafast = encodage rapide")
                 temp_input = self.output_dir / "temp_for_blur.mp4"
                 video_path_or_clip.write_videofile(
                     str(temp_input),
@@ -1405,7 +1406,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                     audio_codec='aac',
                     preset='ultrafast',  # Plus rapide pour temp
                     verbose=False,
-                    logger=None
+                    logger='bar'  # ✅ Barre de progression !
                 )
                 input_path = str(temp_input)
                 is_temp = True
