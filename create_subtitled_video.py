@@ -1381,12 +1381,17 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
             # Créer le fond flouté (vidéo zoomée et floutée)
             print("   ✨ Création du fond flouté...")
-            import moviepy.video.fx.all as vfx
+            from scipy.ndimage import gaussian_filter
+
+            # Fonction pour appliquer le flou gaussien à chaque frame
+            def apply_blur(frame):
+                """Applique un flou gaussien à une frame vidéo"""
+                return gaussian_filter(frame, sigma=10)
 
             # Zoomer la vidéo pour remplir tout le format 9:16 (background)
             background = video.resize((target_width, target_height))
             # Appliquer un flou gaussien fort pour effet esthétique
-            background = background.fx(vfx.blur, 15)
+            background = background.fl_image(apply_blur)
 
             # Centrer la vidéo nette sur le fond
             video_centered = resize_video.set_position(('center', 'center'))
