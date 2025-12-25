@@ -1369,16 +1369,17 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             print("   Utilisation de la vidéo originale...")
             return video_path
 
-    def resize_vertical_9_16_avec_marges(self, video_path_or_clip, output_path, target_height=1920, write_output=True):
+    def resize_vertical_9_16_avec_marges(self, video_path_or_clip, output_path, target_height=1920, write_output=True, background_source=None):
         """
         Resize la vidéo en format vertical 9:16 AVEC FOND FLOUTÉ (FFmpeg rapide)
         Garde toute la vidéo visible au centre avec un fond flouté pour cohérence visuelle
 
         Args:
-            video_path_or_clip: Vidéo source (chemin ou VideoClip)
+            video_path_or_clip: Vidéo source (chemin ou VideoClip) pour le premier plan
             output_path: Vidéo de sortie
             target_height: Hauteur cible (défaut 1920 pour TikTok)
             write_output: Si True, écrit sur disque. Si False, retourne le clip en mémoire
+            background_source: Vidéo source pour le fond flouté (sans sous-titres). Si None, utilise video_path_or_clip
 
         Returns:
             str ou VideoClip: Chemin vidéo avec fond flouté (si write_output=True) ou VideoClip (si False)
@@ -1424,32 +1425,59 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             print(f"   🎯 Dimensions cibles : {target_width}x{target_height}")
             print("   ⚡ Utilisation de FFmpeg pour flou ultra-rapide...")
 
+            # Déterminer la source pour le fond (peut être différente du premier plan)
+            if background_source:
+                print("   🎨 Fond flouté SANS sous-titres (vidéo originale)")
+                background_input = background_source
+                use_two_inputs = True
+            else:
+                background_input = input_path
+                use_two_inputs = False
+
             # Commande FFmpeg avec filter_complex pour fond flouté
-            # [0:v] = vidéo d'entrée
-            # 1. Créer fond flouté : scale pour remplir + gblur
-            # 2. Créer premier plan : scale pour tenir dans le cadre
-            # 3. Overlay : superposer le premier plan sur le fond
-
-            filter_complex = (
-                # Fond flouté (remplit tout l'écran)
-                f"[0:v]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
-                f"crop={target_width}:{target_height},"
-                f"gblur=sigma=10[bg];"
-                # Premier plan net (tient dans le cadre)
-                f"[0:v]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease[fg];"
-                # Superposition centrée
-                f"[bg][fg]overlay=(W-w)/2:(H-h)/2"
-            )
-
-            cmd = [
-                'ffmpeg',
-                '-y',
-                '-i', input_path,
-                '-filter_complex', filter_complex,
-                '-c:v', 'libx264',
-                '-preset', 'medium',
-                '-pix_fmt', 'yuv420p',
-            ]
+            if use_two_inputs:
+                # [0:v] = fond (sans sous-titres), [1:v] = premier plan (avec sous-titres)
+                filter_complex = (
+                    # Fond flouté (vidéo SANS sous-titres)
+                    f"[0:v]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+                    f"crop={target_width}:{target_height},"
+                    f"gblur=sigma=10[bg];"
+                    # Premier plan net (vidéo AVEC sous-titres)
+                    f"[1:v]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease[fg];"
+                    # Superposition centrée
+                    f"[bg][fg]overlay=(W-w)/2:(H-h)/2"
+                )
+                cmd = [
+                    'ffmpeg',
+                    '-y',
+                    '-i', background_input,  # Input 0: fond sans sous-titres
+                    '-i', input_path,        # Input 1: premier plan avec sous-titres
+                    '-filter_complex', filter_complex,
+                    '-c:v', 'libx264',
+                    '-preset', 'medium',
+                    '-pix_fmt', 'yuv420p',
+                ]
+            else:
+                # Une seule entrée (comportement par défaut)
+                filter_complex = (
+                    # Fond flouté (remplit tout l'écran)
+                    f"[0:v]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+                    f"crop={target_width}:{target_height},"
+                    f"gblur=sigma=10[bg];"
+                    # Premier plan net (tient dans le cadre)
+                    f"[0:v]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease[fg];"
+                    # Superposition centrée
+                    f"[bg][fg]overlay=(W-w)/2:(H-h)/2"
+                )
+                cmd = [
+                    'ffmpeg',
+                    '-y',
+                    '-i', input_path,
+                    '-filter_complex', filter_complex,
+                    '-c:v', 'libx264',
+                    '-preset', 'medium',
+                    '-pix_fmt', 'yuv420p',
+                ]
 
             # Ajouter l'audio si présent
             if audio_present:
@@ -1837,7 +1865,8 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         video_vertical = self.resize_vertical_9_16_avec_marges(
             video_zoom,
             str(video_vertical_path),
-            write_output=False  # ⚡ Pas d'encodage, gardé en mémoire
+            write_output=False,  # ⚡ Pas d'encodage, gardé en mémoire
+            background_source=segment_path  # 🎨 Fond SANS sous-titres
         )
 
         # Étape 8 : Loop intelligent (fade out/in pour rewatch)
