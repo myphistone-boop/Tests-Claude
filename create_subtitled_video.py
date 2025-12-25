@@ -1649,14 +1649,21 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 current_progress = 0
                 for line in process.stdout:
                     if 'out_time_us=' in line:
-                        # Extraire le temps actuel en microsecondes
-                        time_us = int(line.split('=')[1].strip())
-                        # Calculer le pourcentage
-                        progress = min(100, int((time_us / video_duration_ms) * 100))
-                        # Mettre à jour la barre
-                        if progress > current_progress:
-                            pbar.update(progress - current_progress)
-                            current_progress = progress
+                        try:
+                            # Extraire le temps actuel en microsecondes
+                            time_us_str = line.split('=')[1].strip()
+                            if time_us_str == 'N/A':
+                                continue  # Ignorer les valeurs N/A au début
+                            time_us = int(time_us_str)
+                            # Calculer le pourcentage
+                            progress = min(100, int((time_us / video_duration_ms) * 100))
+                            # Mettre à jour la barre
+                            if progress > current_progress:
+                                pbar.update(progress - current_progress)
+                                current_progress = progress
+                        except (ValueError, ZeroDivisionError):
+                            # Ignorer les lignes invalides
+                            continue
 
             process.wait()
 
