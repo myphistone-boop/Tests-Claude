@@ -701,8 +701,8 @@ class YouTubeSubtitleGenerator:
             # Styles
             f.write("[V4+ Styles]\n")
             f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-            # Style TikTok viral : JAUNE sur fond noir (&H0000FFFF = jaune, &H00000000 = noir)
-            f.write("Style: Default,Arial,70,&H0000FFFF,&H000000FF,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,6,0,2,10,10,80,1\n")
+            # Style TikTok viral : BLANC par défaut, contour noir épais
+            f.write("Style: Default,Arial,70,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,10,10,80,1\n")
             f.write("\n")
 
             # Événements
@@ -739,13 +739,13 @@ class YouTubeSubtitleGenerator:
                         emoji = MOTS_VIRAUX_EMOJIS.get(mot_lower, '')
 
                         if i == mot_idx:
-                            # Mot actif = JAUNE BRILLANT + ÉMOJI
-                            texte_groupe += r"{\c&H00FFFF00&}" + mot_texte
+                            # Mot actif = JAUNE + ÉMOJI
+                            texte_groupe += r"{\c&H0000FFFF&}" + mot_texte
                             if emoji:
                                 texte_groupe += " " + emoji
-                            texte_groupe += r"{\c&H0000FFFF&} "
+                            texte_groupe += r"{\c&H00FFFFFF&} "
                         else:
-                            # Autre mot = JAUNE STANDARD + ÉMOJI (si viral)
+                            # Autre mot = BLANC + ÉMOJI (si viral)
                             texte_groupe += mot_texte
                             if emoji:
                                 texte_groupe += " " + emoji
@@ -1203,6 +1203,39 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             # Extraire le hook
             print(f"   ✂️  Extraction du hook ({self._format_time(hook_start)} → {self._format_time(hook_end)})...")
             hook = video.subclip(hook_start, hook_end)
+
+            # Ajouter effet shake au début du hook (0.3s) pour attirer l'œil
+            print("   ✨ Ajout de l'animation virale au début du hook...")
+            def shake_effect(get_frame, t):
+                """Effet de shake/tremblement pour les 0.3 premières secondes"""
+                frame = get_frame(t)
+                if t < 0.3:
+                    # Shake intensity diminue avec le temps
+                    import numpy as np
+                    shake_intensity = int(15 * (1 - t/0.3))  # 15px → 0px
+                    dx = np.random.randint(-shake_intensity, shake_intensity)
+                    dy = np.random.randint(-shake_intensity, shake_intensity)
+
+                    # Créer un canvas noir et placer le frame avec offset
+                    h, w = frame.shape[:2]
+                    canvas = np.zeros_like(frame)
+
+                    # Calculer les limites pour éviter les dépassements
+                    src_x1 = max(0, -dx)
+                    src_y1 = max(0, -dy)
+                    src_x2 = min(w, w - dx)
+                    src_y2 = min(h, h - dy)
+
+                    dst_x1 = max(0, dx)
+                    dst_y1 = max(0, dy)
+                    dst_x2 = dst_x1 + (src_x2 - src_x1)
+                    dst_y2 = dst_y1 + (src_y2 - src_y1)
+
+                    canvas[dst_y1:dst_y2, dst_x1:dst_x2] = frame[src_y1:src_y2, src_x1:src_x2]
+                    return canvas
+                return frame
+
+            hook = hook.fl(shake_effect, apply_to=['mask'])
 
             # Créer une transition flash blanc (0.2s)
             print("   ⚡ Création de la transition flash...")
