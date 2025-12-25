@@ -1826,259 +1826,79 @@ def main():
         print(f"   Audios : {len(fichiers['audios'])} fichier(s)")
         print(f"   Transcriptions : {len(fichiers['transcripts'])} fichier(s)")
 
-        print("\n🎬 CHOISISSEZ L'ÉTAPE DE DÉPART :")
-        print("   1. 🚀 TÉLÉCHARGER & CRÉER SHORT TIKTOK (pipeline complet 1→2→3→6)")
-        print("   2. Utiliser une vidéo existante (extraire l'audio)")
-        print("   3. Utiliser un audio existant (transcrire)")
-        print("   4. ⚡ Sous-titrer la VIDÉO COMPLÈTE (méthode rapide ffmpeg/ASS)")
-        print("   5. 📱 CRÉER UNE VIDÉO TIKTOK (segment viral + analyse IA)")
-        print("   6. 🚀 SHORT TIKTOK COMPLET (1min + sous-titres + portrait 9:16 avec marges)")
-        print("   7. 📱 CONVERTIR EN FORMAT VERTICAL 9:16 (crop sans marges)")
+        print("\n" + "=" * 70)
+        print("🎬 CHOISISSEZ VOTRE WORKFLOW")
+        print("=" * 70)
+        print("   1. 🌐 PROCESS DEPUIS URL YOUTUBE")
+        print("      → Télécharger + créer short TikTok viral complet")
+        print()
+        print("   2. 📁 PROCESS DEPUIS VIDÉO EXISTANTE")
+        print("      → Créer short TikTok depuis vidéo déjà téléchargée")
 
         # Forcer l'affichage du prompt
         sys.stdout.flush()
 
-        choix = input("\n👉 Votre choix (1-7) : ").strip()
+        choix = input("\n👉 Votre choix (1-2) : ").strip()
 
         if choix == "1":
-            # Nouveau téléchargement
+            # WORKFLOW 1 : Process depuis URL YouTube
+            print("\n" + "=" * 70)
+            print("🌐 WORKFLOW 1 : PROCESS DEPUIS URL YOUTUBE")
+            print("=" * 70)
+
             url = input("\n📎 Entrez l'URL de la vidéo YouTube : ").strip()
             if not url:
                 print("❌ Erreur : URL vide")
                 sys.exit(1)
+
+            # Pipeline complet : Télécharger → Audio → Transcription → Short TikTok
             generator.traiter_video(url=url, etape_depart=1)
 
         elif choix == "2":
-            # Utiliser vidéo existante
+            # WORKFLOW 2 : Process depuis vidéo existante
+            print("\n" + "=" * 70)
+            print("📁 WORKFLOW 2 : PROCESS DEPUIS VIDÉO EXISTANTE")
+            print("=" * 70)
+
             if not fichiers['videos']:
-                print("❌ Aucune vidéo trouvée. Lancez l'étape 1 d'abord.")
+                print("\n❌ Aucune vidéo trouvée dans le dossier output/")
+                print("💡 Utilisez l'Option 1 pour télécharger une vidéo d'abord")
                 sys.exit(1)
 
             print("\n📹 VIDÉOS DISPONIBLES :")
             for i, video in enumerate(fichiers['videos'], 1):
-                print(f"   {i}. {video.name}")
+                duree_mb = video.stat().st_size / (1024*1024)
+                print(f"   {i}. {video.name} ({duree_mb:.1f} MB)")
 
             idx = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
             video_path = str(fichiers['videos'][idx])
-            generator.traiter_video(etape_depart=2, video_path=video_path)
+            video_name = fichiers['videos'][idx].stem
 
-        elif choix == "3":
-            # Utiliser audio existant
-            if not fichiers['audios']:
-                print("❌ Aucun audio trouvé. Lancez l'étape 1 ou 2 d'abord.")
-                sys.exit(1)
+            # Vérifier si transcription existe
+            transcript_path = generator.transcripts_dir / f"{video_name}_transcript.json"
 
-            if not fichiers['videos']:
-                print("❌ Aucune vidéo trouvée. La vidéo est nécessaire pour la génération finale.")
-                sys.exit(1)
-
-            print("\n🎵 AUDIOS DISPONIBLES :")
-            for i, audio in enumerate(fichiers['audios'], 1):
-                print(f"   {i}. {audio.name}")
-
-            idx = int(input("\n👉 Choisissez un audio : ").strip()) - 1
-            audio_path = str(fichiers['audios'][idx])
-
-            # Trouver la vidéo correspondante
-            audio_name = fichiers['audios'][idx].stem
-            video_path = None
-            for v in fichiers['videos']:
-                if v.stem == audio_name:
-                    video_path = str(v)
-                    break
-
-            if not video_path:
-                print(f"⚠️  Vidéo correspondante non trouvée. Veuillez sélectionner une vidéo :")
-                for i, video in enumerate(fichiers['videos'], 1):
-                    print(f"   {i}. {video.name}")
-                idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
-                video_path = str(fichiers['videos'][idx_v])
-
-            generator.traiter_video(etape_depart=3, video_path=video_path, audio_path=audio_path)
-
-        elif choix == "4":
-            # Sous-titrer la vidéo complète avec la méthode rapide (ffmpeg/ASS)
-            if not fichiers['transcripts']:
-                print("❌ Aucune transcription trouvée. Lancez l'étape 1, 2 ou 3 d'abord.")
-                sys.exit(1)
-
-            if not fichiers['videos']:
-                print("❌ Aucune vidéo trouvée. La vidéo est nécessaire pour la génération finale.")
-                sys.exit(1)
-
-            print("\n📄 TRANSCRIPTIONS DISPONIBLES :")
-            for i, transcript in enumerate(fichiers['transcripts'], 1):
-                print(f"   {i}. {transcript.name}")
-
-            idx = int(input("\n👉 Choisissez une transcription : ").strip()) - 1
-            transcript_path = str(fichiers['transcripts'][idx])
-
-            # Trouver la vidéo correspondante
-            transcript_name = fichiers['transcripts'][idx].stem.replace('_transcript', '')
-            video_path = None
-            for v in fichiers['videos']:
-                if v.stem == transcript_name:
-                    video_path = str(v)
-                    break
-
-            if not video_path:
-                print(f"⚠️  Vidéo correspondante non trouvée. Veuillez sélectionner une vidéo :")
-                for i, video in enumerate(fichiers['videos'], 1):
-                    print(f"   {i}. {video.name}")
-                idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
-                video_path = str(fichiers['videos'][idx_v])
-
-            # Charger la transcription
-            print("\n" + "=" * 70)
-            print("📂 CHARGEMENT DE LA TRANSCRIPTION")
-            print("=" * 70)
-            transcript = generator.charger_transcription(transcript_path)
-            print(f"✅ Transcription chargée : {Path(transcript_path).name}")
-
-            # Sous-titrer la vidéo complète avec la méthode rapide
-            video_name = Path(video_path).stem
-            generator.creer_video_tiktok(video_path, transcript, video_name)
-
-            print("\n🎉 Processus terminé avec succès !")
-
-        elif choix == "5":
-            # Créer une vidéo TikTok avec segment aléatoire
-            if not fichiers['videos']:
-                print("❌ Aucune vidéo trouvée. Lancez l'étape 1 ou 2 d'abord.")
-                sys.exit(1)
-
-            if not fichiers['transcripts']:
-                print("❌ Aucune transcription trouvée. Lancez l'étape 3 d'abord.")
-                sys.exit(1)
-
-            print("\n📹 VIDÉOS DISPONIBLES :")
-            for i, video in enumerate(fichiers['videos'], 1):
-                print(f"   {i}. {video.name}")
-
-            idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
-            video_path = str(fichiers['videos'][idx_v])
-            video_name = fichiers['videos'][idx_v].stem
-
-            print("\n📄 TRANSCRIPTIONS DISPONIBLES :")
-            for i, transcript in enumerate(fichiers['transcripts'], 1):
-                print(f"   {i}. {transcript.name}")
-
-            idx_t = int(input("\n👉 Choisissez une transcription : ").strip()) - 1
-            transcript_path = str(fichiers['transcripts'][idx_t])
-
-            # Charger la transcription
-            transcript = generator.charger_transcription(transcript_path)
-
-            # Demander la durée souhaitée
-            print("\n✂️  CONFIGURATION DU SEGMENT")
-            duree_str = input("👉 Durée souhaitée du segment (en secondes, ex: 60) : ").strip()
-            try:
-                duree_souhaitee = float(duree_str)
-                if duree_souhaitee <= 0:
-                    print("❌ La durée doit être positive")
-                    sys.exit(1)
-            except ValueError:
-                print("❌ Durée invalide")
-                sys.exit(1)
-
-            # Demander le nombre de segments à analyser
-            print("\n💰 OPTIMISATION DES COÛTS API")
-            print("   Plus de segments = meilleure sélection, mais coût API plus élevé")
-            print("   Recommandation : 3-5 segments pour un bon compromis")
-            nb_segments_str = input("👉 Nombre de segments viraux à identifier (1-10, défaut: 5) : ").strip()
-            try:
-                if nb_segments_str == "":
-                    nb_segments = 5
-                else:
-                    nb_segments = int(nb_segments_str)
-                    if nb_segments < 1 or nb_segments > 10:
-                        print("⚠️  Nombre invalide, utilisation de la valeur par défaut (5)")
-                        nb_segments = 5
-            except ValueError:
-                print("⚠️  Nombre invalide, utilisation de la valeur par défaut (5)")
-                nb_segments = 5
-
-            # PHASE 4 : Analyser les moments viraux avec GPT-4-mini
-            analysis = generator.analyser_moments_viraux(transcript, video_name, duree_cible=duree_souhaitee, nb_segments=nb_segments)
-
-            # PHASE 4.5 : Choisir le segment (viral ou aléatoire)
-            choix_segment = generator.choisir_segment_viral(analysis, transcript, duree_souhaitee)
-
-            # PHASE 5 : Extraire le segment choisi
-            if choix_segment is None:
-                # Mode aléatoire
-                print("\n🎲 Mode aléatoire sélectionné")
-                segment_path, transcript_segment = generator.extraire_segment_aleatoire(
-                    video_path, transcript, duree_souhaitee, video_name
-                )
+            if transcript_path.exists():
+                print(f"\n✅ Transcription trouvée : {transcript_path.name}")
+                print("💡 Utilisation de la transcription existante")
+                transcript = generator.charger_transcription(str(transcript_path))
             else:
-                # Mode viral - segment spécifique
-                debut, fin, _ = choix_segment
-                print(f"\n⭐ Segment viral sélectionné : {generator._format_time(debut)} → {generator._format_time(fin)}")
-                segment_path, transcript_segment = generator.extraire_segment_fixe(
-                    video_path, transcript, debut, fin, video_name, mode="viral"
-                )
+                print(f"\n⚠️  Pas de transcription trouvée pour cette vidéo")
+                print("🎙️  Création de la transcription (Whisper API)...")
 
-            # PHASE 6 : Créer la vidéo TikTok avec sous-titres animés
-            generator.creer_video_tiktok(segment_path, transcript_segment, video_name)
+                # Extraire l'audio
+                audio_path = generator.extraire_audio(video_path, video_name)
 
-            print("\n🎉 Processus terminé avec succès !")
+                # Transcrire
+                transcript = generator.transcrire_avec_whisper(audio_path, video_name)
 
-        elif choix == "6":
-            # Créer une vidéo TikTok OPTIMISÉE (hook + détection locale + vertical)
-            if not fichiers['videos']:
-                print("❌ Aucune vidéo trouvée. Lancez l'étape 1 ou 2 d'abord.")
-                sys.exit(1)
-
-            if not fichiers['transcripts']:
-                print("❌ Aucune transcription trouvée. Lancez l'étape 3 d'abord.")
-                sys.exit(1)
-
-            print("\n📹 VIDÉOS DISPONIBLES :")
-            for i, video in enumerate(fichiers['videos'], 1):
-                print(f"   {i}. {video.name}")
-
-            idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
-            video_path = str(fichiers['videos'][idx_v])
-            video_name = fichiers['videos'][idx_v].stem
-
-            print("\n📄 TRANSCRIPTIONS DISPONIBLES :")
-            for i, transcript in enumerate(fichiers['transcripts'], 1):
-                print(f"   {i}. {transcript.name}")
-
-            idx_t = int(input("\n👉 Choisissez une transcription : ").strip()) - 1
-            transcript_path = str(fichiers['transcripts'][idx_t])
-
-            # Charger la transcription
-            transcript = generator.charger_transcription(transcript_path)
-
-            # Créer la vidéo optimisée
+            # Créer le short TikTok optimisé
+            print("\n🚀 Création du short TikTok viral complet...")
             generator.creer_video_tiktok_optimisee(video_path, transcript, video_name)
 
             print("\n🎉 Processus terminé avec succès !")
 
-        elif choix == "7":
-            # Convertir une vidéo en format vertical 9:16
-            if not fichiers['videos']:
-                print("❌ Aucune vidéo trouvée. Lancez l'étape 1 ou 2 d'abord.")
-                sys.exit(1)
-
-            print("\n📹 VIDÉOS DISPONIBLES :")
-            for i, video in enumerate(fichiers['videos'], 1):
-                print(f"   {i}. {video.name}")
-
-            idx_v = int(input("\n👉 Choisissez une vidéo : ").strip()) - 1
-            video_path = str(fichiers['videos'][idx_v])
-            video_name = fichiers['videos'][idx_v].stem
-
-            # Convertir en format vertical
-            output_path = generator.output_dir / f"{video_name}_vertical.mp4"
-            generator.crop_vertical_9_16(video_path, str(output_path))
-
-            print("\n🎉 Processus terminé avec succès !")
-
         else:
-            print("❌ Choix invalide")
+            print("\n❌ Choix invalide. Veuillez choisir 1 ou 2.")
             sys.exit(1)
 
     except KeyboardInterrupt:
@@ -2098,3 +1918,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
