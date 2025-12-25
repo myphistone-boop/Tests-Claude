@@ -1371,7 +1371,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
     def resize_vertical_9_16_avec_marges(self, video_path_or_clip, output_path, target_height=1920, write_output=True):
         """
-        Resize la vidéo en format vertical 9:16 AVEC FOND FLOUTÉ
+        Resize la vidéo en format vertical 9:16 AVEC FOND FLOUTÉ (FFmpeg rapide)
         Garde toute la vidéo visible au centre avec un fond flouté pour cohérence visuelle
 
         Args:
@@ -1388,105 +1388,119 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         print("=" * 70)
 
         try:
-            from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip
-
-            # Accepter soit un chemin, soit un VideoClip
-            if isinstance(video_path_or_clip, str):
-                print("   📂 Chargement de la vidéo...")
-                video = VideoFileClip(video_path_or_clip)
-                should_close = write_output  # Fermer seulement si on écrit
-            else:
-                print("   📂 Utilisation du clip en mémoire...")
-                video = video_path_or_clip
-                should_close = False  # Ne pas fermer, on l'a reçu en paramètre
-
-            w, h = video.size
-
-            print(f"   📐 Dimensions originales : {w}x{h}")
+            import subprocess
+            from moviepy.editor import VideoFileClip
 
             # Dimensions cibles 9:16
             target_ratio = 9 / 16
             target_width = (int(target_height * target_ratio) // 2) * 2
 
-            print(f"   🎯 Dimensions cibles : {target_width}x{target_height}")
-
-            # Calculer le resize pour que la vidéo tienne dans le cadre
-            current_ratio = w / h
-
-            if current_ratio > target_ratio:
-                # Vidéo plus large → ajuster sur la largeur
-                new_width = target_width
-                new_height = (int(target_width / current_ratio) // 2) * 2
-                resize_video = video.resize(width=new_width)
-                print(f"   📏 Resize : {new_width}x{new_height} (ajusté sur largeur)")
-            else:
-                # Vidéo plus haute → ajuster sur la hauteur
-                new_height = target_height
-                new_width = (int(target_height * current_ratio) // 2) * 2
-                resize_video = video.resize(height=new_height)
-                print(f"   📏 Resize : {new_width}x{new_height} (ajusté sur hauteur)")
-
-            # Créer le fond flouté (vidéo zoomée et floutée)
-            print("   ✨ Création du fond flouté...")
-            from scipy.ndimage import gaussian_filter
-            from tqdm import tqdm
-
-            # Zoomer la vidéo pour remplir tout le format 9:16 (background)
-            background = video.resize((target_width, target_height))
-
-            # Calculer le nombre total de frames pour la barre de progression
-            total_frames = int(background.duration * background.fps)
-
-            # Créer une barre de progression pour le flou
-            print(f"   🔄 Application du flou sur {total_frames} frames...")
-            pbar = tqdm(total=total_frames, desc="   💫 Flou gaussien", unit="frames", ncols=70)
-
-            # Fonction pour appliquer le flou gaussien à chaque frame avec progression
-            def apply_blur(frame):
-                """Applique un flou gaussien à une frame vidéo"""
-                pbar.update(1)
-                return gaussian_filter(frame, sigma=10)
-
-            # Appliquer un flou gaussien fort pour effet esthétique
-            background = background.fl_image(apply_blur)
-            pbar.close()
-
-            # Centrer la vidéo nette sur le fond
-            video_centered = resize_video.set_position(('center', 'center'))
-
-            # Composer : [fond flouté] + [vidéo nette centrée]
-            print("   🎨 Composition : fond flouté + vidéo nette...")
-            final = CompositeVideoClip([background, video_centered], size=(target_width, target_height))
-
-            # Copier l'audio
-            if video.audio:
-                final = final.set_audio(video.audio)
-
-            if write_output:
-                # Sauvegarder avec paramètres d'encodage compatibles
-                print("\n📊 Progression de l'encodage :")
-                final.write_videofile(
-                    output_path,
+            # Si on reçoit un VideoClip, le sauvegarder temporairement
+            if not isinstance(video_path_or_clip, str):
+                print("   💾 Sauvegarde temporaire du clip...")
+                temp_input = self.output_dir / "temp_for_blur.mp4"
+                video_path_or_clip.write_videofile(
+                    str(temp_input),
                     codec='libx264',
                     audio_codec='aac',
-                    preset='medium',
-                    ffmpeg_params=['-pix_fmt', 'yuv420p'],
+                    preset='ultrafast',  # Plus rapide pour temp
                     verbose=False,
-                    logger='bar'
+                    logger=None
                 )
-
-                if should_close:
-                    video.close()
-                resize_video.close()
-                background.close()
-                final.close()
-
-                print(f"\n✅ Format 9:16 avec fond flouté appliqué avec succès !")
-                return output_path
+                input_path = str(temp_input)
+                is_temp = True
             else:
-                # Retourner le clip en mémoire
-                print(f"   ✅ Format 9:16 créé en mémoire (pas d'encodage)")
-                return final
+                input_path = video_path_or_clip
+                is_temp = False
+
+            # Obtenir les dimensions de la vidéo
+            probe_video = VideoFileClip(input_path)
+            w, h = probe_video.size
+            audio_present = probe_video.audio is not None
+            probe_video.close()
+
+            print(f"   📐 Dimensions originales : {w}x{h}")
+            print(f"   🎯 Dimensions cibles : {target_width}x{target_height}")
+            print("   ⚡ Utilisation de FFmpeg pour flou ultra-rapide...")
+
+            # Commande FFmpeg avec filter_complex pour fond flouté
+            # [0:v] = vidéo d'entrée
+            # 1. Créer fond flouté : scale pour remplir + gblur
+            # 2. Créer premier plan : scale pour tenir dans le cadre
+            # 3. Overlay : superposer le premier plan sur le fond
+
+            filter_complex = (
+                # Fond flouté (remplit tout l'écran)
+                f"[0:v]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+                f"crop={target_width}:{target_height},"
+                f"gblur=sigma=10[bg];"
+                # Premier plan net (tient dans le cadre)
+                f"[0:v]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease[fg];"
+                # Superposition centrée
+                f"[bg][fg]overlay=(W-w)/2:(H-h)/2"
+            )
+
+            cmd = [
+                'ffmpeg',
+                '-y',
+                '-i', input_path,
+                '-filter_complex', filter_complex,
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-pix_fmt', 'yuv420p',
+            ]
+
+            # Ajouter l'audio si présent
+            if audio_present:
+                cmd.extend(['-c:a', 'aac'])
+            else:
+                cmd.extend(['-an'])  # Pas d'audio
+
+            cmd.extend(['-progress', 'pipe:1', '-loglevel', 'warning', str(output_path)])
+
+            # Lancer FFmpeg avec barre de progression
+            from tqdm import tqdm
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+            print("📊 Progression de l'encodage avec flou :")
+            # Obtenir la durée pour calculer la progression
+            temp_clip = VideoFileClip(input_path)
+            video_duration_ms = int(temp_clip.duration * 1000000)
+            temp_clip.close()
+
+            with tqdm(total=100, desc="   💫 FFmpeg blur", unit="%", ncols=70) as pbar:
+                current_progress = 0
+                for line in process.stdout:
+                    if 'out_time_us=' in line:
+                        try:
+                            time_us_str = line.split('=')[1].strip()
+                            if time_us_str == 'N/A':
+                                continue
+                            time_us = int(time_us_str)
+                            progress = min(100, int((time_us / video_duration_ms) * 100))
+                            if progress > current_progress:
+                                pbar.update(progress - current_progress)
+                                current_progress = progress
+                        except (ValueError, ZeroDivisionError):
+                            continue
+
+            process.wait()
+
+            if process.returncode != 0:
+                stderr = process.stderr.read()
+                raise Exception(f"Erreur FFmpeg: {stderr}")
+
+            # Nettoyer le fichier temporaire si créé
+            if is_temp:
+                temp_input.unlink()
+
+            print(f"\n✅ Format 9:16 avec fond flouté créé !")
+
+            if write_output:
+                return str(output_path)
+            else:
+                # Charger comme VideoClip pour retour en mémoire
+                return VideoFileClip(str(output_path))
 
         except Exception as e:
             print(f"\n⚠️  Erreur lors du resize avec marges : {e}")
