@@ -1058,23 +1058,30 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
         return moments[:10]  # Top 10
 
-    def ajouter_zoom_in_debut(self, video_path, output_path, duree_zoom=1.0):
+    def ajouter_zoom_in_debut(self, video_path_or_clip, output_path, duree_zoom=1.0, write_output=True):
         """
         Ajoute un zoom in rapide sur la 1ère seconde (effet viral TikTok)
 
         Args:
-            video_path: Vidéo source
+            video_path_or_clip: Vidéo source (chemin ou VideoClip)
             output_path: Vidéo de sortie
             duree_zoom: Durée du zoom en secondes (défaut 1.0s)
+            write_output: Si True, écrit sur disque. Si False, retourne le clip en mémoire
 
         Returns:
-            str: Chemin vidéo avec zoom
+            str ou VideoClip: Chemin vidéo avec zoom (si write_output=True) ou VideoClip (si False)
         """
         try:
             from moviepy.editor import VideoFileClip
             import numpy as np
 
-            video = VideoFileClip(video_path)
+            # Accepter soit un chemin, soit un VideoClip
+            if isinstance(video_path_or_clip, str):
+                video = VideoFileClip(video_path_or_clip)
+                should_close = write_output  # Fermer seulement si on écrit
+            else:
+                video = video_path_or_clip
+                should_close = False  # Ne pas fermer, on l'a reçu en paramètre
 
             def zoom_effect(get_frame, t):
                 """Effet de zoom progressif"""
@@ -1100,32 +1107,38 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             # Appliquer l'effet
             video_zoom = video.fl(zoom_effect, apply_to=['mask'])
 
-            # Sauvegarder
-            video_zoom.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                preset='medium',
-                ffmpeg_params=['-pix_fmt', 'yuv420p'],
-                verbose=False,
-                logger=None
-            )
+            if write_output:
+                # Sauvegarder
+                video_zoom.write_videofile(
+                    output_path,
+                    codec='libx264',
+                    audio_codec='aac',
+                    preset='medium',
+                    ffmpeg_params=['-pix_fmt', 'yuv420p'],
+                    verbose=False,
+                    logger=None
+                )
 
-            video.close()
-            video_zoom.close()
+                if should_close:
+                    video.close()
+                video_zoom.close()
 
-            return output_path
+                return output_path
+            else:
+                # Retourner le clip en mémoire
+                return video_zoom
 
         except Exception as e:
             print(f"\n⚠️  Erreur lors du zoom : {e}")
-            return video_path
+            return video_path_or_clip if not isinstance(video_path_or_clip, str) else video_path_or_clip
 
-    def ajouter_loop_intelligent(self, video_path, output_path, duree_fade=0.5):
+    def ajouter_loop_intelligent(self, video_path_or_clip, output_path, duree_fade=0.5):
         """
         Ajoute un loop intelligent : fade out à la fin + fade in au début (rewatch)
+        Cette fonction écrit TOUJOURS sur disque (étape finale)
 
         Args:
-            video_path: Vidéo source
+            video_path_or_clip: Vidéo source (chemin ou VideoClip)
             output_path: Vidéo de sortie
             duree_fade: Durée du fade en secondes (défaut 0.5s)
 
@@ -1137,12 +1150,18 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             from moviepy.video.fx.fadein import fadein
             from moviepy.video.fx.fadeout import fadeout
 
-            video = VideoFileClip(video_path)
+            # Accepter soit un chemin, soit un VideoClip
+            if isinstance(video_path_or_clip, str):
+                video = VideoFileClip(video_path_or_clip)
+                should_close = True
+            else:
+                video = video_path_or_clip
+                should_close = False  # Ne pas fermer, on l'a reçu en paramètre
 
             # Appliquer fade in au début et fade out à la fin
             video_loop = video.fx(fadein, duree_fade).fx(fadeout, duree_fade)
 
-            # Sauvegarder
+            # Sauvegarder (toujours écrire pour cette étape finale)
             video_loop.write_videofile(
                 output_path,
                 codec='libx264',
@@ -1153,16 +1172,17 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 logger=None
             )
 
-            video.close()
+            if should_close:
+                video.close()
             video_loop.close()
 
             return output_path
 
         except Exception as e:
             print(f"\n⚠️  Erreur lors du loop : {e}")
-            return video_path
+            return video_path_or_clip if isinstance(video_path_or_clip, str) else str(output_path)
 
-    def creer_video_avec_hook(self, video_path, hook_start, hook_end, output_path):
+    def creer_video_avec_hook(self, video_path, hook_start, hook_end, output_path, write_output=True):
         """
         Crée une vidéo avec hook de 3s au début
 
@@ -1173,9 +1193,10 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             hook_start: Début du hook (secondes)
             hook_end: Fin du hook (secondes)
             output_path: Chemin de sortie
+            write_output: Si True, écrit sur disque. Si False, retourne le clip en mémoire
 
         Returns:
-            str: Chemin de la vidéo avec hook
+            str ou VideoClip: Chemin de la vidéo avec hook (si write_output=True) ou VideoClip (si False)
         """
         print("\n" + "=" * 70)
         print("🎣 AJOUT DU HOOK VIRAL AU DÉBUT")
@@ -1238,23 +1259,28 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             print("   🔨 Assemblage : [Hook] → [Flash] → [Vidéo]...")
             final = concatenate_videoclips([hook, flash, video], method="compose")
 
-            # Sauvegarder avec paramètres d'encodage compatibles
-            print("\n📊 Progression de l'encodage :")
-            final.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                preset='medium',
-                ffmpeg_params=['-pix_fmt', 'yuv420p'],
-                verbose=False,
-                logger='bar'
-            )
+            if write_output:
+                # Sauvegarder avec paramètres d'encodage compatibles
+                print("\n📊 Progression de l'encodage :")
+                final.write_videofile(
+                    output_path,
+                    codec='libx264',
+                    audio_codec='aac',
+                    preset='medium',
+                    ffmpeg_params=['-pix_fmt', 'yuv420p'],
+                    verbose=False,
+                    logger='bar'
+                )
 
-            video.close()
-            final.close()
+                video.close()
+                final.close()
 
-            print(f"\n✅ Hook ajouté avec succès !")
-            return output_path
+                print(f"\n✅ Hook ajouté avec succès !")
+                return output_path
+            else:
+                # Retourner le clip en mémoire (ne pas fermer video, il est utilisé dans final)
+                print(f"   ✅ Hook créé en mémoire (pas d'encodage)")
+                return final
 
         except Exception as e:
             print(f"\n⚠️  Erreur lors de l'ajout du hook : {e}")
@@ -1331,18 +1357,19 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             print("   Utilisation de la vidéo originale...")
             return video_path
 
-    def resize_vertical_9_16_avec_marges(self, video_path, output_path, target_height=1920):
+    def resize_vertical_9_16_avec_marges(self, video_path_or_clip, output_path, target_height=1920, write_output=True):
         """
         Resize la vidéo en format vertical 9:16 AVEC FOND FLOUTÉ
         Garde toute la vidéo visible au centre avec un fond flouté pour cohérence visuelle
 
         Args:
-            video_path: Vidéo source
+            video_path_or_clip: Vidéo source (chemin ou VideoClip)
             output_path: Vidéo de sortie
             target_height: Hauteur cible (défaut 1920 pour TikTok)
+            write_output: Si True, écrit sur disque. Si False, retourne le clip en mémoire
 
         Returns:
-            str: Chemin vidéo avec fond flouté
+            str ou VideoClip: Chemin vidéo avec fond flouté (si write_output=True) ou VideoClip (si False)
         """
         print("\n" + "=" * 70)
         print("📱 CONVERSION FORMAT VERTICAL 9:16 (AVEC FOND FLOUTÉ)")
@@ -1351,8 +1378,16 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         try:
             from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip
 
-            print("   📂 Chargement de la vidéo...")
-            video = VideoFileClip(video_path)
+            # Accepter soit un chemin, soit un VideoClip
+            if isinstance(video_path_or_clip, str):
+                print("   📂 Chargement de la vidéo...")
+                video = VideoFileClip(video_path_or_clip)
+                should_close = write_output  # Fermer seulement si on écrit
+            else:
+                print("   📂 Utilisation du clip en mémoire...")
+                video = video_path_or_clip
+                should_close = False  # Ne pas fermer, on l'a reçu en paramètre
+
             w, h = video.size
 
             print(f"   📐 Dimensions originales : {w}x{h}")
@@ -1404,30 +1439,36 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             if video.audio:
                 final = final.set_audio(video.audio)
 
-            # Sauvegarder avec paramètres d'encodage compatibles
-            print("\n📊 Progression de l'encodage :")
-            final.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                preset='medium',
-                ffmpeg_params=['-pix_fmt', 'yuv420p'],
-                verbose=False,
-                logger='bar'
-            )
+            if write_output:
+                # Sauvegarder avec paramètres d'encodage compatibles
+                print("\n📊 Progression de l'encodage :")
+                final.write_videofile(
+                    output_path,
+                    codec='libx264',
+                    audio_codec='aac',
+                    preset='medium',
+                    ffmpeg_params=['-pix_fmt', 'yuv420p'],
+                    verbose=False,
+                    logger='bar'
+                )
 
-            video.close()
-            resize_video.close()
-            background.close()
-            final.close()
+                if should_close:
+                    video.close()
+                resize_video.close()
+                background.close()
+                final.close()
 
-            print(f"\n✅ Format 9:16 avec marges appliqué avec succès !")
-            return output_path
+                print(f"\n✅ Format 9:16 avec fond flouté appliqué avec succès !")
+                return output_path
+            else:
+                # Retourner le clip en mémoire
+                print(f"   ✅ Format 9:16 créé en mémoire (pas d'encodage)")
+                return final
 
         except Exception as e:
             print(f"\n⚠️  Erreur lors du resize avec marges : {e}")
             print("   Utilisation de la vidéo originale...")
-            return video_path
+            return video_path_or_clip if not isinstance(video_path_or_clip, str) else video_path_or_clip
 
     def _trouver_fin_phrase(self, words, start_index, duree_min=60):
         """
@@ -1714,25 +1755,35 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         print("\n📝 Ajout des sous-titres sur le segment (jaune + émojis viraux)...")
         video_subtitled = self.creer_video_tiktok(segment_path, transcript_segment, f"{video_title}_temp")
 
-        # Étape 5 : Ajouter le hook au début du segment
+        # Étape 5 : Ajouter le hook au début du segment (EN MÉMOIRE)
         print(f"\n🎣 Hook : {self._format_time(hook_start_in_segment)} → {self._format_time(hook_end_in_segment)} du segment")
         video_hook_path = self.output_dir / f"{video_title}_with_hook.mp4"
         video_with_hook = self.creer_video_avec_hook(
             video_subtitled,
             hook_start_in_segment,
             hook_end_in_segment,
-            str(video_hook_path)
+            str(video_hook_path),
+            write_output=False  # ⚡ Pas d'encodage, gardé en mémoire
         )
 
-        # Étape 6 : Zoom in rapide sur 1ère seconde (effet viral)
+        # Étape 6 : Zoom in rapide sur 1ère seconde (EN MÉMOIRE)
         print("\n🔍 Ajout du zoom in viral sur 1ère seconde...")
         video_zoom_path = self.output_dir / f"{video_title}_with_zoom.mp4"
-        video_zoom = self.ajouter_zoom_in_debut(video_with_hook, str(video_zoom_path), duree_zoom=1.0)
+        video_zoom = self.ajouter_zoom_in_debut(
+            video_with_hook,
+            str(video_zoom_path),
+            duree_zoom=1.0,
+            write_output=False  # ⚡ Pas d'encodage, gardé en mémoire
+        )
 
-        # Étape 7 : Format vertical 9:16 avec marges (garde toute la vidéo visible)
+        # Étape 7 : Format vertical 9:16 avec fond flouté (EN MÉMOIRE)
         print("\n📱 Conversion format vertical 9:16...")
         video_vertical_path = self.output_dir / f"{video_title}_vertical.mp4"
-        video_vertical = self.resize_vertical_9_16_avec_marges(video_zoom, str(video_vertical_path))
+        video_vertical = self.resize_vertical_9_16_avec_marges(
+            video_zoom,
+            str(video_vertical_path),
+            write_output=False  # ⚡ Pas d'encodage, gardé en mémoire
+        )
 
         # Étape 8 : Loop intelligent (fade out/in pour rewatch)
         print("\n🔄 Ajout du loop intelligent (fade out/in)...")
