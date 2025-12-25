@@ -663,7 +663,27 @@ class YouTubeSubtitleGenerator:
         return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
     def creer_fichier_ass_anime(self, mots_timestamps, output_path):
-        """Crée un fichier ASS avec animations TikTok (blanc->jaune->blanc)"""
+        """Crée un fichier ASS avec animations TikTok (jaune avec émojis viraux)"""
+
+        # Dictionnaire mots viraux → émojis (TikTok 2025)
+        MOTS_VIRAUX_EMOJIS = {
+            'incroyable': '🤯', 'incredible': '🤯', 'amazing': '🤯',
+            'jamais': '🚫', 'never': '🚫',
+            'secret': '🤫', 'choc': '⚡', 'shock': '⚡',
+            'attention': '⚠️', 'important': '❗',
+            'urgent': '🚨', 'fou': '🔥', 'crazy': '🔥', 'dingue': '🔥',
+            'énorme': '💥', 'huge': '💥', 'wow': '😱', 'omg': '😱',
+            'money': '💰', 'argent': '💰', 'million': '💸',
+            'gagner': '💵', 'win': '🏆', 'victoire': '🏆',
+            'parfait': '✨', 'perfect': '✨', 'best': '⭐',
+            'pourquoi': '🤔', 'why': '🤔', 'comment': '🤔', 'how': '🤔',
+            'oui': '✅', 'yes': '✅', 'non': '❌', 'no': '❌',
+            'danger': '☠️', 'mort': '💀', 'death': '💀',
+            'rapide': '⚡', 'fast': '⚡', 'quick': '⚡',
+            'gratuit': '🎁', 'free': '🎁', 'cadeau': '🎁',
+            'nouveau': '🆕', 'new': '🆕',
+            'feu': '🔥', 'fire': '🔥', 'insane': '🔥'
+        }
 
         # Grouper les mots par 2-3
         groupes = self.grouper_mots(mots_timestamps)
@@ -681,8 +701,8 @@ class YouTubeSubtitleGenerator:
             # Styles
             f.write("[V4+ Styles]\n")
             f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-            # Style par défaut : blanc avec contour noir
-            f.write("Style: Default,Arial,70,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,10,10,80,1\n")
+            # Style TikTok viral : JAUNE sur fond noir (&H0000FFFF = jaune, &H00000000 = noir)
+            f.write("Style: Default,Arial,70,&H0000FFFF,&H000000FF,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,6,0,2,10,10,80,1\n")
             f.write("\n")
 
             # Événements
@@ -709,17 +729,27 @@ class YouTubeSubtitleGenerator:
                     mot_start = mot_info['start']
                     mot_end = mot_info['end']
 
-                    # Construire le texte avec animation de couleur
+                    # Construire le texte avec animation de couleur + émojis
                     texte_groupe = ""
                     for i, m in enumerate(groupe):
                         mot_texte = m['word'].strip().upper()
+                        mot_lower = m['word'].strip().lower()
+
+                        # Vérifier si le mot est viral et a un émoji
+                        emoji = MOTS_VIRAUX_EMOJIS.get(mot_lower, '')
 
                         if i == mot_idx:
-                            # Mot actif = JAUNE (&H00FFFF)
-                            texte_groupe += r"{\c&H00FFFF&}" + mot_texte + r"{\c&HFFFFFF&} "
+                            # Mot actif = JAUNE BRILLANT + ÉMOJI
+                            texte_groupe += r"{\c&H00FFFF00&}" + mot_texte
+                            if emoji:
+                                texte_groupe += " " + emoji
+                            texte_groupe += r"{\c&H0000FFFF&} "
                         else:
-                            # Autre mot = BLANC (&HFFFFFF)
-                            texte_groupe += mot_texte + " "
+                            # Autre mot = JAUNE STANDARD + ÉMOJI (si viral)
+                            texte_groupe += mot_texte
+                            if emoji:
+                                texte_groupe += " " + emoji
+                            texte_groupe += " "
 
                     texte_groupe = texte_groupe.strip()
 
@@ -1038,6 +1068,110 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
         return moments[:10]  # Top 10
 
+    def ajouter_zoom_in_debut(self, video_path, output_path, duree_zoom=1.0):
+        """
+        Ajoute un zoom in rapide sur la 1ère seconde (effet viral TikTok)
+
+        Args:
+            video_path: Vidéo source
+            output_path: Vidéo de sortie
+            duree_zoom: Durée du zoom en secondes (défaut 1.0s)
+
+        Returns:
+            str: Chemin vidéo avec zoom
+        """
+        try:
+            from moviepy.editor import VideoFileClip
+            import numpy as np
+
+            video = VideoFileClip(video_path)
+
+            def zoom_effect(get_frame, t):
+                """Effet de zoom progressif"""
+                frame = get_frame(t)
+                if t < duree_zoom:
+                    # Zoom de 120% → 100% pendant duree_zoom
+                    zoom_factor = 1.2 - (t / duree_zoom) * 0.2
+                    h, w = frame.shape[:2]
+                    new_h, new_w = int(h * zoom_factor), int(w * zoom_factor)
+
+                    # Crop au centre pour garder la même taille
+                    y_start = (new_h - h) // 2
+                    x_start = (new_w - w) // 2
+
+                    from PIL import Image
+                    import numpy as np
+                    img = Image.fromarray(frame)
+                    img_resized = img.resize((new_w, new_h), Image.LANCZOS)
+                    cropped = np.array(img_resized)[y_start:y_start+h, x_start:x_start+w]
+                    return cropped
+                return frame
+
+            # Appliquer l'effet
+            video_zoom = video.fl(zoom_effect, apply_to=['mask'])
+
+            # Sauvegarder
+            video_zoom.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                preset='medium',
+                ffmpeg_params=['-pix_fmt', 'yuv420p'],
+                verbose=False,
+                logger=None
+            )
+
+            video.close()
+            video_zoom.close()
+
+            return output_path
+
+        except Exception as e:
+            print(f"\n⚠️  Erreur lors du zoom : {e}")
+            return video_path
+
+    def ajouter_loop_intelligent(self, video_path, output_path, duree_fade=0.5):
+        """
+        Ajoute un loop intelligent : fade out à la fin + fade in au début (rewatch)
+
+        Args:
+            video_path: Vidéo source
+            output_path: Vidéo de sortie
+            duree_fade: Durée du fade en secondes (défaut 0.5s)
+
+        Returns:
+            str: Chemin vidéo avec loop
+        """
+        try:
+            from moviepy.editor import VideoFileClip
+            from moviepy.video.fx.fadein import fadein
+            from moviepy.video.fx.fadeout import fadeout
+
+            video = VideoFileClip(video_path)
+
+            # Appliquer fade in au début et fade out à la fin
+            video_loop = video.fx(fadein, duree_fade).fx(fadeout, duree_fade)
+
+            # Sauvegarder
+            video_loop.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                preset='medium',
+                ffmpeg_params=['-pix_fmt', 'yuv420p'],
+                verbose=False,
+                logger=None
+            )
+
+            video.close()
+            video_loop.close()
+
+            return output_path
+
+        except Exception as e:
+            print(f"\n⚠️  Erreur lors du loop : {e}")
+            return video_path
+
     def creer_video_avec_hook(self, video_path, hook_start, hook_end, output_path):
         """
         Crée une vidéo avec hook de 3s au début
@@ -1261,6 +1395,62 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             print("   Utilisation de la vidéo originale...")
             return video_path
 
+    def _trouver_fin_phrase(self, words, start_index, duree_min=60):
+        """
+        Trouve la fin de phrase la plus proche après duree_min secondes
+
+        Args:
+            words: Liste de mots avec timestamps
+            start_index: Index du mot de départ
+            duree_min: Durée minimale en secondes (défaut 60s)
+
+        Returns:
+            index du dernier mot de la phrase
+        """
+        if start_index >= len(words):
+            return len(words) - 1
+
+        debut = words[start_index].start
+        temps_min = debut + duree_min
+
+        # Chercher après duree_min
+        for i in range(start_index, len(words)):
+            if words[i].start >= temps_min:
+                # Chercher la prochaine ponctuation de fin de phrase
+                for j in range(i, min(len(words), i + 50)):  # Limite à 50 mots max
+                    mot = words[j].word.strip()
+                    # Fin de phrase : . ! ? ou fin de liste
+                    if mot.endswith('.') or mot.endswith('!') or mot.endswith('?') or j == len(words) - 1:
+                        return j
+                # Si pas de ponctuation trouvée, retourner le mot actuel
+                return i
+
+        # Si on arrive ici, on est à la fin
+        return len(words) - 1
+
+    def _trouver_debut_phrase(self, words, target_index):
+        """
+        Trouve le début de phrase le plus proche avant target_index
+
+        Args:
+            words: Liste de mots avec timestamps
+            target_index: Index cible
+
+        Returns:
+            index du premier mot de la phrase
+        """
+        if target_index <= 0:
+            return 0
+
+        # Chercher en arrière pour trouver une ponctuation de fin de phrase
+        for i in range(target_index - 1, max(0, target_index - 50), -1):
+            mot = words[i].word.strip()
+            if mot.endswith('.') or mot.endswith('!') or mot.endswith('?'):
+                return i + 1  # Début de la phrase suivante
+
+        # Si pas trouvé, retourner le début
+        return max(0, target_index - 20)  # Max 20 mots en arrière
+
     def _format_time(self, seconds):
         """Formate les secondes en MM:SS"""
         minutes = int(seconds // 60)
@@ -1417,13 +1607,12 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         else:
             print("⚠️  Aucun moment fort détecté, utilisation du début de la vidéo")
 
-        # Étape 2 : Déterminer le segment à extraire
+        # Étape 2 : Déterminer le segment à extraire (MIN 60s, sans couper de phrase)
         if moments_locaux:
             meilleur_moment = moments_locaux[0]
             # Centrer le segment sur le moment fort
             hook_center = (meilleur_moment['start'] + meilleur_moment['end']) / 2
-            segment_start = max(0, hook_center - duree_segment / 2)
-            segment_end = segment_start + duree_segment
+            segment_start_approx = max(0, hook_center - duree_segment / 2)
 
             # Vérifier qu'on ne dépasse pas la durée de la vidéo
             from moviepy.editor import VideoFileClip
@@ -1431,20 +1620,48 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             video_duration = video_temp.duration
             video_temp.close()
 
-            if segment_end > video_duration:
-                segment_end = video_duration
-                segment_start = max(0, video_duration - duree_segment)
+            # Trouver le début de phrase le plus proche
+            words_list = list(transcript.words) if hasattr(transcript, 'words') else []
+            if words_list:
+                # Trouver l'index du mot au début approximatif
+                start_word_idx = 0
+                for i, word in enumerate(words_list):
+                    if word.start >= segment_start_approx:
+                        start_word_idx = i
+                        break
 
-            print(f"\n📍 Segment viral sélectionné : {self._format_time(segment_start)} → {self._format_time(segment_end)}")
+                # Ajuster au début de la phrase
+                start_word_idx = self._trouver_debut_phrase(words_list, start_word_idx)
+                segment_start = words_list[start_word_idx].start
+
+                # Trouver la fin de phrase après min 60s
+                end_word_idx = self._trouver_fin_phrase(words_list, start_word_idx, duree_min=60)
+                segment_end = words_list[end_word_idx].end
+
+                # Vérifier qu'on ne dépasse pas
+                if segment_end > video_duration:
+                    segment_end = video_duration
+            else:
+                segment_start = segment_start_approx
+                segment_end = min(segment_start + duree_segment, video_duration)
+
+            duree_reelle = segment_end - segment_start
+            print(f"\n📍 Segment viral sélectionné : {self._format_time(segment_start)} → {self._format_time(segment_end)} ({duree_reelle:.1f}s)")
+            print(f"   ✅ Commence et termine à une fin de phrase")
             print(f"   Centré sur le meilleur moment ({meilleur_moment['reason']})")
 
             # Position du hook DANS le segment
             hook_start_in_segment = meilleur_moment['start'] - segment_start
-            hook_end_in_segment = meilleur_moment['end'] - segment_start
+            hook_end_in_segment = min(meilleur_moment['end'] - segment_start, duree_reelle)
         else:
-            # Pas de moment fort, prendre le début
+            # Pas de moment fort, prendre le début avec phrases complètes
             segment_start = 0
-            segment_end = min(duree_segment, video_duration)
+            words_list = list(transcript.words) if hasattr(transcript, 'words') else []
+            if words_list:
+                end_word_idx = self._trouver_fin_phrase(words_list, 0, duree_min=60)
+                segment_end = words_list[end_word_idx].end
+            else:
+                segment_end = min(duree_segment, video_duration)
             hook_start_in_segment = 0
             hook_end_in_segment = 3
 
@@ -1460,7 +1677,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         )
 
         # Étape 4 : Ajouter les sous-titres sur le segment
-        print("\n📝 Ajout des sous-titres sur le segment...")
+        print("\n📝 Ajout des sous-titres sur le segment (jaune + émojis viraux)...")
         video_subtitled = self.creer_video_tiktok(segment_path, transcript_segment, f"{video_title}_temp")
 
         # Étape 5 : Ajouter le hook au début du segment
@@ -1473,9 +1690,20 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             str(video_hook_path)
         )
 
-        # Étape 6 : Format vertical 9:16 avec marges (garde toute la vidéo visible)
+        # Étape 6 : Zoom in rapide sur 1ère seconde (effet viral)
+        print("\n🔍 Ajout du zoom in viral sur 1ère seconde...")
+        video_zoom_path = self.output_dir / f"{video_title}_with_zoom.mp4"
+        video_zoom = self.ajouter_zoom_in_debut(video_with_hook, str(video_zoom_path), duree_zoom=1.0)
+
+        # Étape 7 : Format vertical 9:16 avec marges (garde toute la vidéo visible)
+        print("\n📱 Conversion format vertical 9:16...")
+        video_vertical_path = self.output_dir / f"{video_title}_vertical.mp4"
+        video_vertical = self.resize_vertical_9_16_avec_marges(video_zoom, str(video_vertical_path))
+
+        # Étape 8 : Loop intelligent (fade out/in pour rewatch)
+        print("\n🔄 Ajout du loop intelligent (fade out/in)...")
         final_path = self.output_dir / f"{video_title}_optimized.mp4"
-        video_final = self.resize_vertical_9_16_avec_marges(video_with_hook, str(final_path))
+        video_final = self.ajouter_loop_intelligent(video_vertical, str(final_path), duree_fade=0.5)
 
         print("\n" + "=" * 70)
         print("✨ VIDÉO OPTIMISÉE TERMINÉE !")
