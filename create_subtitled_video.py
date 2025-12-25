@@ -254,16 +254,24 @@ class YouTubeSubtitleGenerator:
             print(f"⚠️  Impossible de calculer la durée : {e}")
             duree_minutes = 0
 
-        print("⏳ Envoi à l'API OpenAI... (cela peut prendre quelques instants)")
+        print("⏳ Envoi à l'API OpenAI Whisper...")
+        print("   💡 Temps estimé : ~30-60 secondes selon la durée")
+
+        # Barre de progression indéterminée pour l'API
+        from tqdm import tqdm
+        import time
 
         try:
             with open(audio_path, "rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    response_format="verbose_json",
-                    timestamp_granularities=["word"]
-                )
+                # Lancer l'appel API avec une barre de progression
+                with tqdm(total=100, desc="📡 Transcription API", bar_format='{l_bar}{bar}| {elapsed}', ncols=70) as pbar:
+                    transcript = self.client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        response_format="verbose_json",
+                        timestamp_granularities=["word"]
+                    )
+                    pbar.update(100)  # Compléter la barre
 
             # Vérifier si on a des timestamps de mots
             if hasattr(transcript, 'words') and transcript.words:
@@ -1417,16 +1425,27 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             # Créer le fond flouté (vidéo zoomée et floutée)
             print("   ✨ Création du fond flouté...")
             from scipy.ndimage import gaussian_filter
-
-            # Fonction pour appliquer le flou gaussien à chaque frame
-            def apply_blur(frame):
-                """Applique un flou gaussien à une frame vidéo"""
-                return gaussian_filter(frame, sigma=10)
+            from tqdm import tqdm
 
             # Zoomer la vidéo pour remplir tout le format 9:16 (background)
             background = video.resize((target_width, target_height))
+
+            # Calculer le nombre total de frames pour la barre de progression
+            total_frames = int(background.duration * background.fps)
+
+            # Créer une barre de progression pour le flou
+            print(f"   🔄 Application du flou sur {total_frames} frames...")
+            pbar = tqdm(total=total_frames, desc="   💫 Flou gaussien", unit="frames", ncols=70)
+
+            # Fonction pour appliquer le flou gaussien à chaque frame avec progression
+            def apply_blur(frame):
+                """Applique un flou gaussien à une frame vidéo"""
+                pbar.update(1)
+                return gaussian_filter(frame, sigma=10)
+
             # Appliquer un flou gaussien fort pour effet esthétique
             background = background.fl_image(apply_blur)
+            pbar.close()
 
             # Centrer la vidéo nette sur le fond
             video_centered = resize_video.set_position(('center', 'center'))
@@ -1600,6 +1619,12 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
             import subprocess
 
+            # Obtenir la durée de la vidéo pour la barre de progression
+            from moviepy.editor import VideoFileClip
+            temp_video = VideoFileClip(str(video_path))
+            video_duration_ms = int(temp_video.duration * 1000000)  # En microsecondes
+            temp_video.close()
+
             # Utiliser le filtre 'ass' pour ASS avec animations inline
             cmd = [
                 'ffmpeg',
@@ -1612,18 +1637,22 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 str(output_path)
             ]
 
-            # Lancer ffmpeg et afficher la progression
+            # Lancer ffmpeg avec barre de progression tqdm
+            from tqdm import tqdm
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
-            print("   ", end='', flush=True)
-            dots = 0
-            for line in process.stdout:
-                if 'out_time_ms' in line or 'progress' in line:
-                    print(".", end='', flush=True)
-                    dots += 1
-                    if dots % 50 == 0:
-                        print(f" [{dots} frames]")
-                        print("   ", end='', flush=True)
+            with tqdm(total=100, desc="   🎬 Incrustation", unit="%", ncols=70) as pbar:
+                current_progress = 0
+                for line in process.stdout:
+                    if 'out_time_us=' in line:
+                        # Extraire le temps actuel en microsecondes
+                        time_us = int(line.split('=')[1].strip())
+                        # Calculer le pourcentage
+                        progress = min(100, int((time_us / video_duration_ms) * 100))
+                        # Mettre à jour la barre
+                        if progress > current_progress:
+                            pbar.update(progress - current_progress)
+                            current_progress = progress
 
             process.wait()
 
