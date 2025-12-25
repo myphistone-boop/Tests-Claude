@@ -1117,6 +1117,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
             if write_output:
                 # Sauvegarder
+                print("\n📊 Encodage du zoom :")
                 video_zoom.write_videofile(
                     output_path,
                     codec='libx264',
@@ -1124,7 +1125,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                     preset='medium',
                     ffmpeg_params=['-pix_fmt', 'yuv420p'],
                     verbose=False,
-                    logger=None
+                    logger='bar'
                 )
 
                 if should_close:
@@ -1167,9 +1168,12 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 should_close = False  # Ne pas fermer, on l'a reçu en paramètre
 
             # Appliquer fade in au début et fade out à la fin
+            print(f"   ⚡ Application des fades ({duree_fade}s)...")
             video_loop = video.fx(fadein, duree_fade).fx(fadeout, duree_fade)
 
             # Sauvegarder (toujours écrire pour cette étape finale)
+            print("\n📊 ENCODAGE FINAL (flou + effets + fade) :")
+            print("   💡 Cette étape peut prendre du temps (rendu du flou frame-by-frame)")
             video_loop.write_videofile(
                 output_path,
                 codec='libx264',
@@ -1177,7 +1181,7 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 preset='medium',
                 ffmpeg_params=['-pix_fmt', 'yuv420p'],
                 verbose=False,
-                logger=None
+                logger='bar'  # ✅ Barre de progression activée !
             )
 
             if should_close:
