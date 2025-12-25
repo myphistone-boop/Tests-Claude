@@ -1838,6 +1838,36 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
         print("\n📝 Ajout des sous-titres sur le segment (jaune + émojis viraux)...")
         video_subtitled = self.creer_video_tiktok(segment_path, transcript_segment, f"{video_title}_temp")
 
+        # Étape 4b : Préparer le fond (SANS sous-titres mais AVEC effets pour synchronisation)
+        print("\n🎨 Préparation du fond synchronisé (hook + zoom SANS sous-titres)...")
+        from moviepy.editor import VideoFileClip
+
+        # Charger le segment original (sans sous-titres)
+        segment_video = VideoFileClip(segment_path)
+
+        # Appliquer hook (pour avoir la même durée que la vidéo avec sous-titres)
+        print("   🎣 Application du hook sur segment original...")
+        background_hook_path = self.output_dir / f"{video_title}_bg_hook_temp.mp4"
+        background_with_hook = self.creer_video_avec_hook(
+            segment_video,
+            hook_start_in_segment,
+            hook_end_in_segment,
+            str(background_hook_path),
+            write_output=True  # Écrire temporairement pour FFmpeg
+        )
+
+        # Appliquer zoom
+        print("   🔍 Application du zoom sur fond...")
+        background_zoom_path = self.output_dir / f"{video_title}_bg_zoom_temp.mp4"
+        background_with_zoom = self.ajouter_zoom_in_debut(
+            background_with_hook,
+            str(background_zoom_path),
+            duree_zoom=1.0,
+            write_output=True  # Écrire temporairement pour FFmpeg
+        )
+
+        segment_video.close()
+
         # Étape 5 : Ajouter le hook au début du segment (EN MÉMOIRE)
         print(f"\n🎣 Hook : {self._format_time(hook_start_in_segment)} → {self._format_time(hook_end_in_segment)} du segment")
         video_hook_path = self.output_dir / f"{video_title}_with_hook.mp4"
@@ -1866,13 +1896,20 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             video_zoom,
             str(video_vertical_path),
             write_output=False,  # ⚡ Pas d'encodage, gardé en mémoire
-            background_source=segment_path  # 🎨 Fond SANS sous-titres
+            background_source=background_with_zoom  # 🎨 Fond synchronisé (même durée, SANS sous-titres)
         )
 
         # Étape 8 : Loop intelligent (fade out/in pour rewatch)
         print("\n🔄 Ajout du loop intelligent (fade out/in)...")
         final_path = self.output_dir / f"{video_title}_optimized.mp4"
         video_final = self.ajouter_loop_intelligent(video_vertical, str(final_path), duree_fade=0.5)
+
+        # Nettoyage des fichiers temporaires
+        print("\n🧹 Nettoyage des fichiers temporaires...")
+        if background_hook_path.exists():
+            background_hook_path.unlink()
+        if background_zoom_path.exists():
+            background_zoom_path.unlink()
 
         print("\n" + "=" * 70)
         print("✨ VIDÉO OPTIMISÉE TERMINÉE !")
