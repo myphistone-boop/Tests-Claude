@@ -729,27 +729,17 @@ class YouTubeSubtitleGenerator:
                     mot_start = mot_info['start']
                     mot_end = mot_info['end']
 
-                    # Construire le texte avec animation de couleur + émojis
+                    # Construire le texte avec animation de couleur
                     texte_groupe = ""
                     for i, m in enumerate(groupe):
                         mot_texte = m['word'].strip().upper()
-                        mot_lower = m['word'].strip().lower()
-
-                        # Vérifier si le mot est viral et a un émoji
-                        emoji = MOTS_VIRAUX_EMOJIS.get(mot_lower, '')
 
                         if i == mot_idx:
-                            # Mot actif = JAUNE + ÉMOJI
-                            texte_groupe += r"{\c&H0000FFFF&}" + mot_texte
-                            if emoji:
-                                texte_groupe += " " + emoji
-                            texte_groupe += r"{\c&H00FFFFFF&} "
+                            # Mot actif = JAUNE
+                            texte_groupe += r"{\c&H0000FFFF&}" + mot_texte + r"{\c&H00FFFFFF&} "
                         else:
-                            # Autre mot = BLANC + ÉMOJI (si viral)
-                            texte_groupe += mot_texte
-                            if emoji:
-                                texte_groupe += " " + emoji
-                            texte_groupe += " "
+                            # Autre mot = BLANC
+                            texte_groupe += mot_texte + " "
 
                     texte_groupe = texte_groupe.strip()
 
@@ -1343,8 +1333,8 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
     def resize_vertical_9_16_avec_marges(self, video_path, output_path, target_height=1920):
         """
-        Resize la vidéo en format vertical 9:16 AVEC MARGES (letterbox)
-        Garde toute la vidéo visible en ajoutant des barres noires
+        Resize la vidéo en format vertical 9:16 AVEC FOND FLOUTÉ
+        Garde toute la vidéo visible au centre avec un fond flouté pour cohérence visuelle
 
         Args:
             video_path: Vidéo source
@@ -1352,10 +1342,10 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             target_height: Hauteur cible (défaut 1920 pour TikTok)
 
         Returns:
-            str: Chemin vidéo avec marges
+            str: Chemin vidéo avec fond flouté
         """
         print("\n" + "=" * 70)
-        print("📱 CONVERSION FORMAT VERTICAL 9:16 (AVEC MARGES)")
+        print("📱 CONVERSION FORMAT VERTICAL 9:16 (AVEC FOND FLOUTÉ)")
         print("=" * 70)
 
         try:
@@ -1389,14 +1379,20 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
                 resize_video = video.resize(height=new_height)
                 print(f"   📏 Resize : {new_width}x{new_height} (ajusté sur hauteur)")
 
-            # Créer le fond noir
-            background = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=video.duration)
+            # Créer le fond flouté (vidéo zoomée et floutée)
+            print("   ✨ Création du fond flouté...")
+            from moviepy.video.fx.all import blur
 
-            # Centrer la vidéo sur le fond
+            # Zoomer la vidéo pour remplir tout le format 9:16 (background)
+            background = video.resize((target_width, target_height))
+            # Appliquer un flou gaussien fort pour effet esthétique
+            background = background.fx(blur, 20)
+
+            # Centrer la vidéo nette sur le fond
             video_centered = resize_video.set_position(('center', 'center'))
 
-            # Composer
-            print("   🎨 Ajout des marges noires...")
+            # Composer : [fond flouté] + [vidéo nette centrée]
+            print("   🎨 Composition : fond flouté + vidéo nette...")
             final = CompositeVideoClip([background, video_centered], size=(target_width, target_height))
 
             # Copier l'audio
