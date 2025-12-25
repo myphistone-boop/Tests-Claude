@@ -1840,16 +1840,12 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
         # Étape 4b : Préparer le fond (SANS sous-titres mais AVEC effets pour synchronisation)
         print("\n🎨 Préparation du fond synchronisé (hook + zoom SANS sous-titres)...")
-        from moviepy.editor import VideoFileClip
 
-        # Charger le segment original (sans sous-titres)
-        segment_video = VideoFileClip(segment_path)
-
-        # Appliquer hook (pour avoir la même durée que la vidéo avec sous-titres)
+        # Appliquer hook au segment original (pour avoir la même durée que la vidéo avec sous-titres)
         print("   🎣 Application du hook sur segment original...")
         background_hook_path = self.output_dir / f"{video_title}_bg_hook_temp.mp4"
         background_with_hook = self.creer_video_avec_hook(
-            segment_video,
+            segment_path,  # ✅ Utiliser le chemin, pas le VideoClip
             hook_start_in_segment,
             hook_end_in_segment,
             str(background_hook_path),
@@ -1865,8 +1861,6 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
             duree_zoom=1.0,
             write_output=True  # Écrire temporairement pour FFmpeg
         )
-
-        segment_video.close()
 
         # Étape 5 : Ajouter le hook au début du segment (EN MÉMOIRE)
         print(f"\n🎣 Hook : {self._format_time(hook_start_in_segment)} → {self._format_time(hook_end_in_segment)} du segment")
