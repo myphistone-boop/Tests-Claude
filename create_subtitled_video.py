@@ -1381,12 +1381,12 @@ Assure-toi que les timestamps correspondent aux marqueurs [Xs] dans la transcrip
 
             # Créer le fond flouté (vidéo zoomée et floutée)
             print("   ✨ Création du fond flouté...")
-            from moviepy.video.fx.all import blur
+            import moviepy.video.fx.all as vfx
 
             # Zoomer la vidéo pour remplir tout le format 9:16 (background)
             background = video.resize((target_width, target_height))
             # Appliquer un flou gaussien fort pour effet esthétique
-            background = background.fx(blur, 20)
+            background = background.fx(vfx.blur, 15)
 
             # Centrer la vidéo nette sur le fond
             video_centered = resize_video.set_position(('center', 'center'))
